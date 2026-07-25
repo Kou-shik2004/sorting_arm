@@ -1,0 +1,150 @@
+{
+  "find_package (ROS dep)": {
+    "scope": "cmake",
+    "prefix": "find_package",
+    "body": "find_package(${1:rclcpp} REQUIRED)",
+    "description": "Find a ROS 2 / ament package"
+  },
+  "add_executable": {
+    "scope": "cmake",
+    "prefix": "add_executable",
+    "body": "add_executable(${1:node} src/${1:node}.cpp)",
+    "description": "Declare a C++ executable"
+  },
+  "ament_target_dependencies": {
+    "scope": "cmake",
+    "prefix": "ament_target_dependencies",
+    "body": "ament_target_dependencies(${1:node} ${2:rclcpp})",
+    "description": "Link a target against ROS 2 package dependencies"
+  },
+  "target_include_directories": {
+    "scope": "cmake",
+    "prefix": "target_include_directories",
+    "body": "target_include_directories(${1:node} PUBLIC\n  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>\n  $<INSTALL_INTERFACE:include>\n)",
+    "description": "Public include dirs with build/install generator expressions"
+  },
+  "add_library": {
+    "scope": "cmake",
+    "prefix": "add_library",
+    "body": "add_library(${1:${PROJECT_NAME}} src/${2:source}.cpp)",
+    "description": "Declare a C++ library"
+  },
+  "rclcpp_components_register_nodes": {
+    "scope": "cmake",
+    "prefix": "rclcpp_components_register_nodes",
+    "body": "rclcpp_components_register_nodes(${1:${PROJECT_NAME}} \"${2:my_namespace::MyNode}\")",
+    "description": "Register a composable node component"
+  },
+  "install (TARGETS executable)": {
+    "scope": "cmake",
+    "prefix": "install_targets",
+    "body": "install(TARGETS\n  ${1:node}\n  DESTINATION lib/${PROJECT_NAME}\n)",
+    "description": "Install executables into the package"
+  },
+  "install (TARGETS library)": {
+    "scope": "cmake",
+    "prefix": "install_library",
+    "body": "install(TARGETS ${1:${PROJECT_NAME}}\n  EXPORT export_${1:${PROJECT_NAME}}\n  ARCHIVE DESTINATION lib\n  LIBRARY DESTINATION lib\n  RUNTIME DESTINATION bin\n)",
+    "description": "Install a library with an export set"
+  },
+  "install (DIRECTORY)": {
+    "scope": "cmake",
+    "prefix": "install_directory",
+    "body": "install(DIRECTORY\n  ${1:launch}\n  DESTINATION share/${PROJECT_NAME}\n)",
+    "description": "Install a directory (launch, config, urdf, meshes)"
+  },
+  "install (include headers)": {
+    "scope": "cmake",
+    "prefix": "install_include",
+    "body": "install(DIRECTORY include/\n  DESTINATION include\n)",
+    "description": "Install public headers"
+  },
+  "rosidl_generate_interfaces": {
+    "scope": "cmake",
+    "prefix": "rosidl_generate_interfaces",
+    "body": "rosidl_generate_interfaces(${PROJECT_NAME}\n  \"${1:msg/MyMessage.msg}\"\n  DEPENDENCIES ${2:std_msgs}\n)",
+    "description": "Generate msg/srv/action interfaces"
+  },
+  "ament_export_dependencies": {
+    "scope": "cmake",
+    "prefix": "ament_export_dependencies",
+    "body": "ament_export_dependencies(${1:rclcpp})",
+    "description": "Export dependencies to downstream packages"
+  },
+  "ament_export_include_directories": {
+    "scope": "cmake",
+    "prefix": "ament_export_include_directories",
+    "body": "ament_export_include_directories(include)",
+    "description": "Export include dirs to downstream packages"
+  },
+  "ament_export_targets": {
+    "scope": "cmake",
+    "prefix": "ament_export_targets",
+    "body": "ament_export_targets(export_${1:${PROJECT_NAME}} HAS_LIBRARY_TARGET)",
+    "description": "Export a library target set to downstream packages"
+  },
+  "BUILD_TESTING lint block": {
+    "scope": "cmake",
+    "prefix": "build_testing",
+    "body": "if(BUILD_TESTING)\n  find_package(ament_lint_auto REQUIRED)\n  ament_lint_auto_find_test_dependencies()\nendif()",
+    "description": "Standard ament lint test block"
+  },
+  "ament_package": {
+    "scope": "cmake",
+    "prefix": "ament_package",
+    "body": "ament_package()",
+    "description": "Finalize an ament_cmake package (must be last)"
+  },
+  "ROS 2 C++ executable package": {
+    "scope": "cmake",
+    "prefix": "ros2_cpp_skeleton",
+    "body": [
+      "cmake_minimum_required(VERSION 3.8)",
+      "project(${1:my_package})",
+      "",
+      "if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES \"Clang\")",
+      "  add_compile_options(-Wall -Wextra -Wpedantic)",
+      "endif()",
+      "",
+      "find_package(ament_cmake REQUIRED)",
+      "find_package(${2:rclcpp} REQUIRED)",
+      "",
+      "add_executable(${3:node} src/${3:node}.cpp)",
+      "ament_target_dependencies(${3:node} ${2:rclcpp})",
+      "",
+      "install(TARGETS",
+      "  ${3:node}",
+      "  DESTINATION lib/\\${PROJECT_NAME}",
+      ")",
+      "",
+      "if(BUILD_TESTING)",
+      "  find_package(ament_lint_auto REQUIRED)",
+      "  ament_lint_auto_find_test_dependencies()",
+      "endif()",
+      "",
+      "ament_package()"
+    ],
+    "description": "Full ament_cmake C++ executable CMakeLists.txt"
+  },
+  "ROS 2 interfaces (msg/srv) package": {
+    "scope": "cmake",
+    "prefix": "ros2_interfaces_skeleton",
+    "body": [
+      "cmake_minimum_required(VERSION 3.8)",
+      "project(${1:my_interfaces})",
+      "",
+      "find_package(ament_cmake REQUIRED)",
+      "find_package(rosidl_default_generators REQUIRED)",
+      "find_package(${2:std_msgs} REQUIRED)",
+      "",
+      "rosidl_generate_interfaces(\\${PROJECT_NAME}",
+      "  \"msg/${3:MyMessage}.msg\"",
+      "  DEPENDENCIES ${2:std_msgs}",
+      ")",
+      "",
+      "ament_export_dependencies(rosidl_default_runtime)",
+      "ament_package()"
+    ],
+    "description": "Full ament_cmake msg/srv interfaces CMakeLists.txt"
+  }
+}

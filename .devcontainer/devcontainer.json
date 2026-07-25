@@ -1,0 +1,40 @@
+{
+  "name": "sorting_arm_dev",
+  "dockerComposeFile": "../docker-compose.yaml",
+  "service": "dev",
+  "workspaceFolder": "/sorting_arm_ws",
+  "remoteUser": "kratos",
+  "updateRemoteUserUID": false,
+  // Closing the window leaves the container running
+  "shutdownAction": "none",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-python.python",
+        "redhat.vscode-xml",
+        "redhat.vscode-yaml",
+        "Ranch-Hand-Robotics.urdf-editor",
+        "smilerobotics.urdf",
+        "Ranch-Hand-Robotics.rde-pack",
+        "Ranch-Hand-Robotics.rde-ros-2",
+        "twxs.cmake",
+        "ms-vscode.cmake-tools",
+        "althack.ament-task-provider",
+        "george-alisson.html-preview-vscode"
+      ],
+      "settings": {
+        "C_Cpp.intelliSenseEngine": "default",
+        "C_Cpp.default.compilerPath": "/usr/bin/g++",
+        "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+        "C_Cpp.default.cppStandard": "c++20",
+        "C_Cpp.default.includePath": [
+          "${workspaceFolder}/**",
+          "/opt/ros/jazzy/include/**",
+          "/opt/underlay/install/include/**"
+        ],
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# When this list gets long enough to be slow, promote its contents into base.txt
+# or ros.txt and leave this one holding a single package again.
+
+iputils-ping

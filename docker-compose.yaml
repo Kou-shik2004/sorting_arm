@@ -1,0 +1,49 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: .docker/Dockerfile
+      args:
+        USERNAME: kratos
+        USER_UID: 1000
+        USER_GID: 1000
+        TOOLS_REFRESH: ${TOOLS_REFRESH:-0}
+    image: sorting_arm_dev:jazzy
+    container_name: sorting_arm_dev
+    command: sleep infinity          # stays alive; exec or attach at will
+    network_mode: host               # DDS discovery. Note: container ports are
+    ipc: host                        # host ports. Qt/Gazebo shared memory.
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1           # Qt crashes on MIT-SHM across the IPC boundary
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - CLAUDE_CONFIG_DIR=/home/kratos/.claude
+    volumes:
+      - .:/sorting_arm_ws:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw            # GUI forwarding 
+
+      # Named volumes 
+      - sorting_arm_claude_config:/home/kratos/.claude        # config + plugins
+      - sorting_arm_claude_mem:/home/kratos/.claude-mem       # claude-mem db 
+      - sorting_arm_codex_config:/home/kratos/.codex          # codex
+      - sorting_arm_bash_history:/commandhistory              # HISTFILE
+      - sorting_arm_vscode_server:/home/kratos/.vscode-server # vscode server
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  sorting_arm_claude_config:
+    name: sorting_arm_claude_config
+  sorting_arm_claude_mem:
+    name: sorting_arm_claude_mem
+  sorting_arm_codex_config:
+    name: sorting_arm_codex_config
+  sorting_arm_bash_history:
+    name: sorting_arm_bash_history
+  sorting_arm_vscode_server:
+    name: sorting_arm_vscode_server

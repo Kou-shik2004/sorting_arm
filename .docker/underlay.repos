@@ -1,0 +1,8 @@
+# Source-only dependencies built into /opt/underlay. we track branches, so a
+# rebuild on a clean machine can pull newer upstream than the one you tested.
+
+repositories:
+  BehaviorTree.ROS2:
+    type: git
+    url: https://github.com/BehaviorTree/BehaviorTree.ROS2.git
+    version: humble
