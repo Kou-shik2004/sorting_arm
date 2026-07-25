@@ -16,6 +16,7 @@ services:
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1           # Qt crashes on MIT-SHM across the IPC boundary
+      - TZ=Asia/Kolkata              # image clock is UTC, so timestamps dont match the host
       - NVIDIA_DRIVER_CAPABILITIES=all
       - CLAUDE_CONFIG_DIR=/home/kratos/.claude
     volumes:

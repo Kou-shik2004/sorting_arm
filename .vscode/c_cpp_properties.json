@@ -8,7 +8,7 @@
       "includePath": [
         "${workspaceFolder}/**",
         "/opt/ros/jazzy/include/**",
-        "/opt/bt_ros2_ws/install/include/**",
+        "/opt/underlay/install/include/**",
         "/usr/include/**"
       ],
       "name": "ros2",
