@@ -1,0 +1,23 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: sorting_arm_description
+    relative_path: urdf/sorting_arm.urdf.xacro
+  srdf:
+    relative_path: config/sorting_arm.srdf
+  package_settings:
+    author_name: Koushik
+    author_email: koushik20040804@gmail.com
+    generated_timestamp: 1785096739
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position

@@ -10,6 +10,8 @@ Ubuntu 24.04 · ROS 2 Jazzy · Gazebo Harmonic · C++20 · MoveIt 2 · ros2_cont
 
 `docs/PROJECT.md` — phases and their gates · `docs/architecture.md` — data flow, interfaces, recovery table · `docs/decisions.md` — D1–D11, every architectural choice with its reason. Read them when a task touches them, never automatically.
 
+**`docs/reuse.md` is the reference-repo map, and it is not optional.** Before deriving any configuration, controller, launch or URDF detail, read the relevant `reuse.md` entry and open the file it cites in `context/ref_repos/`. `arm_stack` is the closest match to this robot — our gripper description is its gripper description. A running system in the corpus outranks anything I can reconstruct from installed headers or from memory of similar projects. If a `reuse.md` citation turns out to be wrong, correct `reuse.md`; do not work around it.
+
 **If `docs/` is thin or silent on something, go to `context/plan/`** — the fuller masters live there and `docs/` is distilled from them. `context/` is private and gitignored: read it, never copy it into the repo.
 
 ## Scope
