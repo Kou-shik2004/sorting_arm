@@ -4,39 +4,7 @@
         name
         prefix
         parent
-        *origin
-        sim_ignition:=false
-        sim_isaac:=false
-        isaac_joint_commands:=/isaac_joint_commands
-        isaac_joint_states:=/isaac_joint_states
-        use_fake_hardware:=false
-        mock_sensor_commands:=false
-        include_ros2_control:=true
-        com_port:=/dev/ttyUSB0
-        gripper_speed_multiplier:=1.0
-        gripper_force_multiplier:=0.5
-        gripper_max_speed:=0.150
-        gripper_max_force:=235.0
-        gripper_closed_position:=0.7929">
-
-        <!-- if we are simulating or directly communicating with the gripper we need a ros2 control instance -->
-        <xacro:if value="${include_ros2_control}">
-            <xacro:include filename="$(find sorting_arm_description)/urdf/robotiq_2f_85/2f_85.ros2_control.xacro" />
-            <xacro:robotiq_gripper_ros2_control
-                name="${name}" prefix="${prefix}"
-                sim_ignition="${sim_ignition}"
-                sim_isaac="${sim_isaac}"
-                isaac_joint_commands="${isaac_joint_commands}"
-                isaac_joint_states="${isaac_joint_states}"
-                use_fake_hardware="${use_fake_hardware}"
-                mock_sensor_commands="${mock_sensor_commands}"
-                com_port="${com_port}"
-                gripper_speed_multiplier="${gripper_speed_multiplier}"
-                gripper_force_multiplier="${gripper_force_multiplier}"
-                gripper_max_speed="${gripper_max_speed}"
-                gripper_max_force="${gripper_max_force}"
-                gripper_closed_position="${gripper_closed_position}"/>
-        </xacro:if>
+        *origin">
 
         <link name="${prefix}robotiq_85_base_link">
             <visual>

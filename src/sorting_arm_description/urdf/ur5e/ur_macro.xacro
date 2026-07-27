@@ -50,8 +50,8 @@
      - Muhammad Asif Rana
   -->
 
-  <xacro:include filename="$(find sorting_arm_description)/urdf/ur5e/inc/ur_transmissions.xacro" />
-  <xacro:include filename="$(find sorting_arm_description)/urdf/ur5e/inc/ur_common.xacro" />
+  <xacro:include filename="inc/ur_transmissions.xacro" />
+  <xacro:include filename="inc/ur_common.xacro" />
 
   <xacro:macro name="ur_robot" params="
     name
@@ -62,16 +62,11 @@
     kinematics_parameters_file
     physical_parameters_file
     visual_parameters_file
-    generate_ros2_control_tag:=true
     safety_limits:=false
     safety_pos_margin:=0.15
     safety_k_position:=20
-    use_fake_hardware:=false
-    fake_sensor_commands:=false
     sim_gazebo:=false
-    sim_ignition:=false
-    initial_positions:=${dict(shoulder_pan_joint=0.0,shoulder_lift_joint=-1.57,elbow_joint=0.0,wrist_1_joint=-1.57,wrist_2_joint=0.0,wrist_3_joint=0.0)}"
-
+    sim_ignition:=false"
     >
 
     <!-- Load configuration data from the provided .yaml files -->
@@ -82,21 +77,6 @@
       visual_parameters_file="${visual_parameters_file}"
       force_abs_paths="${sim_gazebo or sim_ignition}"/>
 
-
-    <xacro:if value="${generate_ros2_control_tag}">
-      <!-- ros2 control include -->
-      <xacro:include filename="$(find sorting_arm_description)/urdf/ur5e/ur.ros2_control.xacro" />
-      <!-- ros2 control instance -->
-      <xacro:ur_ros2_control
-        name="${name}"
-        use_fake_hardware="${use_fake_hardware}"
-        initial_positions="${initial_positions}"
-        fake_sensor_commands="${fake_sensor_commands}"
-        sim_gazebo="${sim_gazebo}"
-        sim_ignition="${sim_ignition}"
-        tf_prefix="${tf_prefix}"
-        />
-    </xacro:if>
 
     <!-- Add URDF transmission elements (for ros_control) -->
     <!--<xacro:ur_arm_transmission prefix="${prefix}" hw_interface="${transmission_hw_interface}" />-->

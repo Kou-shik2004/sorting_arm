@@ -17,6 +17,9 @@
   <exec_depend>rviz2</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
 
+  <!-- sorting_arm.ros2_control.xacro names mock_components/GenericSystem, and hardware_interface is what registers it -->
+  <exec_depend>hardware_interface</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

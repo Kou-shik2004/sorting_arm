@@ -3,11 +3,27 @@
 <package format="3">
   <name>sorting_arm_bringup</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Bring-up launch and controller config that wires the description, ros2_control and MoveIt together.</description>
   <maintainer email="koushik.s2022@vitstudent.ac.in">kratos</maintainer>
   <license>TODO: License declaration</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- the two packages moveit.launch.xml reaches into for the xacro and the move_group launch -->
+  <exec_depend>sorting_arm_description</exec_depend>
+  <exec_depend>sorting_arm_moveit</exec_depend>
+
+  <!-- nodes moveit.launch.xml starts by hand -->
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <!-- 1. every controller type named in config/ros2_controllers.yaml, and
+       2. gripper_controllers is the one that registers position_controllers/GripperActionController -->
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>gripper_controllers</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
