@@ -21,6 +21,6 @@ moveit_simple_controller_manager:
   gripper_controller:
     type: GripperCommand
     joints:
-      - robotiq_85_left_knuckle_joint
+      - robotiq_85_left_knuckle_joint  # here in moveit both are lists 
     action_ns: gripper_cmd
     default: true
