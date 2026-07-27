@@ -2,4 +2,6 @@
 <robot xmlns:xacro="http://wiki.ros.org/xacro" name="sorting_arm">
 
   <xacro:include filename="sorting_arm.xacro"/>
+  <xacro:include filename="sorting_arm.ros2_control.xacro"/>
+
 </robot>

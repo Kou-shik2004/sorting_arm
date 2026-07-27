@@ -6,41 +6,50 @@
             <!-- By default, set up controllers for simulation. This won't work on real hardware -->
             <plugin>mock_components/GenericSystem</plugin>
         </hardware>
+        <!-- velocity state on the arm joints too: arm_controller now lists velocity in its
+             state_interfaces, and its constraints block cannot evaluate
+             stopped_velocity_tolerance without it -->
         <joint name="shoulder_pan_joint">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
+            <state_interface name="velocity"/>
         </joint>
         <joint name="shoulder_lift_joint">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
+            <state_interface name="velocity"/>
         </joint>
         <joint name="elbow_joint">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
+            <state_interface name="velocity"/>
         </joint>
         <joint name="wrist_1_joint">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
+            <state_interface name="velocity"/>
         </joint>
         <joint name="wrist_2_joint">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
+            <state_interface name="velocity"/>
         </joint>
         <joint name="wrist_3_joint">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
+            <state_interface name="velocity"/>
         </joint>
         <!-- the gripper action controller claims velocity state too, without it the controller never activates -->
 
@@ -53,5 +62,5 @@
         </joint>
 
     </ros2_control>
-   
+
 </robot>

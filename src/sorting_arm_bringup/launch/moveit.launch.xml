@@ -1,6 +1,6 @@
 <launch>
 
-    <let name="urdf_file_path" value="$(find-pkg-share sorting_arm_description)/urdf/sorting_arm.urdf.xacro"/>
+    <let name="urdf_file_path" value="$(find-pkg-share sorting_arm_description)/urdf/sorting_arm.mock.urdf.xacro"/>
     <let name="rviz_file_path" value="$(find-pkg-share sorting_arm_bringup)/rviz/final_moveit.rviz"/>
 
     <!-- RSP for tf using urdf and joint states (currently mock comp)-->
@@ -21,8 +21,6 @@
     <!-- Main moveit python launch file -->
     <include file="$(find-pkg-share sorting_arm_moveit)/launch/move_group.launch.py"/>
 
-    <!-- Rviz2 with custom rviz file, through moveits launch so rviz gets the kinematics and
-         planning params. a bare rviz2 node gets none of them and MotionPlanning has no IK -->
     <include file="$(find-pkg-share sorting_arm_moveit)/launch/moveit_rviz.launch.py">
         <arg name="rviz_config" value="$(var rviz_file_path)"/>
     </include>

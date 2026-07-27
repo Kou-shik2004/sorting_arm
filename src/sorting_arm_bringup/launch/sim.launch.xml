@@ -1,0 +1,46 @@
+<launch>
+     
+    <append_env name="GZ_SIM_RESOURCE_PATH" value="$(find-pkg-share sorting_arm_description)/.."/>
+    <let name="urdf_file_path" value="$(find-pkg-share sorting_arm_description)/urdf/sorting_arm.sim.urdf.xacro"/>
+    <let name="controllers_file_path" value="$(find-pkg-share sorting_arm_bringup)/config/ros2_controllers.yaml"/>
+    <let name="gazebo_config_path" value="$(find-pkg-share sorting_arm_bringup)/config/gz_bridge.yaml"/>
+    <let name="rviz_file_path" value="$(find-pkg-share sorting_arm_bringup)/rviz/final_moveit.rviz"/>
+
+    <include file="$(find-pkg-share ros_gz_sim)/launch/gz_sim.launch.py">
+        <arg name="gz_args" value="empty.sdf -r"/>
+    </include>
+
+    <!-- stays above set_use_sim_time on purpose. its connectivity check runs off a ros timer,
+         and a timer on sim time never fires until /clock arrives, which is what this publishes -->
+    <node pkg="ros_gz_bridge" exec="parameter_bridge">
+        <param name="config_file" value="$(var gazebo_config_path)"/>
+    </node>
+
+    <!-- gz_ros2_control already forces this on the controllers. without it here move_group and
+         rsp stay on the wall clock and every joint state looks 1.7 billion seconds stale -->
+    <set_use_sim_time value="true"/>
+
+     <node pkg="robot_state_publisher" exec="robot_state_publisher">
+        <param name="robot_description"
+               value="$(command 'xacro $(var urdf_file_path) controllers_file:=$(var controllers_file_path)')"
+               type="str"/>
+    </node>
+
+     <node pkg="ros_gz_sim" exec="create"
+          args="-world empty -topic robot_description -name sorting_arm"/>
+
+    <node pkg="controller_manager" exec="spawner"
+          args="joint_state_broadcaster --controller-manager-timeout 60"/>
+    <node pkg="controller_manager" exec="spawner"
+          args="arm_controller --controller-manager-timeout 60"/>
+    <node pkg="controller_manager" exec="spawner"
+          args="gripper_controller --controller-manager-timeout 60"/>
+
+     <!-- Main moveit python launch file -->
+    <include file="$(find-pkg-share sorting_arm_moveit)/launch/move_group.launch.py"/>
+
+    <include file="$(find-pkg-share sorting_arm_moveit)/launch/moveit_rviz.launch.py">
+        <arg name="rviz_config" value="$(var rviz_file_path)"/>
+    </include>
+
+</launch>
