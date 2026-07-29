@@ -28,7 +28,6 @@ arm_controller:
     state_interfaces:
       - position
       - velocity
-    allow_nonzero_velocity_at_trajectory_end: true
     constraints:
       goal_time: 1.0
       stopped_velocity_tolerance: 0.05
@@ -41,4 +40,4 @@ arm_controller:
 
 gripper_controller:
   ros__parameters:
-    joint: robotiq_85_left_knuckle_joint  # here in ros2 control this is string and param name is 'joint'
+    joint: robotiq_85_left_knuckle_joint

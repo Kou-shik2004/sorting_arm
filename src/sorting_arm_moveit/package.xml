@@ -26,11 +26,6 @@
   <exec_depend>joint_state_publisher_gui</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>xacro</exec_depend>
-  <!-- ros2_controllers.yaml names both of these plugins, so they are hard runtime deps -->
-
-  <exec_depend>joint_trajectory_controller</exec_depend>
-  <exec_depend>gripper_controllers</exec_depend>
-  <exec_depend>controller_manager</exec_depend>
   <exec_depend>moveit_configs_utils</exec_depend>
   <exec_depend>moveit_ros_move_group</exec_depend>
   <exec_depend>moveit_ros_visualization</exec_depend>

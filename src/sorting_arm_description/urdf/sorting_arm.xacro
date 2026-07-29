@@ -29,4 +29,11 @@
     parent="$(arg tf_prefix)robotiq_85_mount_link">
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </xacro:robotiq_gripper>
+
+  <link name="$(arg tf_prefix)tcp"/>
+  <joint name="$(arg tf_prefix)tcp_joint" type="fixed">
+    <parent link="$(arg tf_prefix)robotiq_85_base_link"/>
+    <child link="$(arg tf_prefix)tcp"/>
+    <origin xyz="0 0 0.16" rpy="0 0 0"/>
+  </joint>
 </robot>
