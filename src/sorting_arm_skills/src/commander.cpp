@@ -36,7 +36,7 @@ int main(int argc,char* argv[])
     // if(succ) arm.execute(plan1);
 
     // Pose Goal
-    auto msg = arm.getCurrentPose();
+    auto msg = arm.getCurrentPose(); // use sim time needed by default uses wall time
     msg.pose.position.y -= 0.05;
     arm.setStartStateToCurrentState();  
     arm.setPoseTarget(msg);

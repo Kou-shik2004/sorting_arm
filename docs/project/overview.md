@@ -14,7 +14,8 @@ The completed pre-perception milestone will:
 5. return the arm to a measured SRDF `home` state.
 
 Real perception will later replace only the fixed object provider. It must not force
-the manipulation layer or executive to be redesigned.
+the manipulation layer or executive to be redesigned. The planned real provider uses
+the wrist camera and returns detections through the same contract.
 
 ## Final package map
 
@@ -43,9 +44,22 @@ responsibilities separate prevents task policy from leaking into motion code.
 
 The package does not yet provide stable reusable motion, planning-scene management,
 gripper commands, deterministic skill sequences, action servers, or unit tests.
-Interfaces, the executive, perception, CI, and application bringup integration
-remain planned work governed by the
-[implementation roadmap](../plan/roadmap.md).
+Interfaces, the executive, perception, remote CI workflows, and application bringup
+integration remain planned work governed by the
+[implementation roadmap](../plan/roadmap.md). CI begins as a parallel clean-build
+track and matures with the application rather than waiting for all features.
+
+## Project navigation
+
+- [Architecture](architecture.md) owns package boundaries and runtime contracts.
+- [Architectural decisions](decisions.md) records accepted choices and reasons.
+- [Development workflow](development-workflow.md) defines feature slices, review,
+  understanding, and verification.
+- [Context management](context-management.md) defines which information remains
+  canonical, temporary, or on demand.
+- [Implementation roadmap](../plan/roadmap.md) owns ordered gates and live status.
+- [Continuous integration](../plan/continuous-integration.md) defines the three
+  validation levels.
 
 ## Success criteria
 

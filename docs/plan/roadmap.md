@@ -6,12 +6,19 @@ preceding gate passes.
 
 ## How to use this roadmap
 
-Complete one step at a time. Review the technical focus and intended files, implement
-the checklist, retain reproducible verification evidence, and advance only after the
-step's gate passes.
+Complete one dependency gate at a time through the feature-slice workflow in
+[development workflow](../project/development-workflow.md). A feature slice may
+touch several files when they collectively establish one behavior or invariant.
+Review its contract, implement the complete slice, retain reproducible verification
+evidence, and advance only after the step's gate passes.
 
 “Future” means no implementation should be added merely because its design appears
 below.
+
+CI is a parallel validation track, not a feature postponed until Step 8. Establish
+the clean-build foundation as soon as practical and grow it with each deterministic
+test. Step 8 is the maturity gate for that work. The three levels are defined in the
+[continuous integration plan](continuous-integration.md).
 
 ## Step 0 — runtime prerequisites
 
@@ -377,14 +384,16 @@ evidence set is recorded.
 **Stop gate:** The reusable layer satisfies every verification item above and is
 accepted for use by higher-level packages.
 
-## Step 8 — continuous integration
+## Step 8 — continuous-integration maturity gate
 
-**Status:** Future; start only after Step 7 passes locally.
+**Status:** Ready to begin in parallel. No remote workflow exists yet; the full gate
+is evaluated after Step 7 passes locally.
 
-**Purpose:** Prove package metadata, dependencies, build, and tests on a clean machine
-rather than through stale local artifacts.
+**Purpose:** Mature the early CI foundation into independent evidence for package
+metadata, dependencies, image construction, clean builds, and tests.
 
-**Files:** `.github/workflows/ci.yml`.
+**Files:** `.github/workflows/ci.yml` first. Add a separate image or scheduled
+simulation workflow only when its corresponding level is implemented.
 
 **Learn:** Workflow, event, job, runner, step, action, shell exit status,
 `push`/`pull_request`, Docker image builds, `colcon build`, `colcon test`, verbose
@@ -392,23 +401,28 @@ test results, workflow logs, and required checks.
 
 **Work checklist:**
 
-- Write one understandable workflow using the project development image.
+- Establish per-change clean workspace build and validation early.
+- Validate the development image independently when its inputs change.
 - Build the workspace from a clean checkout.
 - Run tests and always expose verbose results on failure.
 - Explain every workflow line.
-- Open the pull request and require the remote workflow to pass.
+- Keep full Gazebo physics out of the per-change job.
+- Add manual or scheduled simulation smoke only after a deterministic headless path
+  exists.
+- Run the workflow remotely and require it to pass before this gate closes.
 - Configure a required check only when the repository owner chooses to.
 
 **Failure symptoms:** CI succeeds through cached local outputs, a test failure is
-masked, logs omit `colcon test-result`, or the workflow contains unexplained release,
-secret, matrix, or cache machinery.
+masked, logs omit `colcon test-result`, image construction is coupled to every C++
+edit, or a flaky physics launch blocks ordinary source changes.
 
 **Verification:** One remote `push` or pull-request run builds and tests successfully;
-a deliberately failing branch proves the check turns red and points to the failing
-step.
+a development-image change triggers its independent validation; a deliberately
+failing branch proves the normal check turns red and points to the failing step.
 
-**Stop gate:** The remote result is green and every workflow step is documented and
-reviewable.
+**Stop gate:** The Level 1 and Level 2 remote results are green, every workflow step
+is reviewable, and Level 3 remains explicitly manual/scheduled until its own
+readiness contract is proven.
 
 ## Step 9 — shared interfaces
 
@@ -594,7 +608,7 @@ architecture.
 | 1–3 | Typed results, validated configuration, and pure geometry tests |
 | 4A–4D | Independent named, joint, pose, and safe retimed Cartesian motion |
 | 5–7 | Verified scene transitions, collision rejection, and complete reusable-layer evidence |
-| 8 | Understandable remote clean build/test |
+| 8 | Understandable remote clean build/test plus independent development-image validation |
 | 9–11 | Stable interfaces, deterministic sequences, and independent actions |
 | 12 | Complete fixed-source sorting cycle |
 | 13 | Contract-compatible real perception |

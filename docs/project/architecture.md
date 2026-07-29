@@ -67,11 +67,24 @@ allocate a destination slot, and call Pick, Place, and Home in order. It will st
 the first typed failure in the first milestone. Motion planning, gripper mechanics,
 and attachment details do not belong here.
 
+BehaviorTree.CPP is used at this layer because later recovery policy must be visible,
+composable, and independently testable through sequences, fallbacks, conditions,
+retries, and asynchronous action leaves. It is not used to hide arm-motion or
+planning-scene mechanics. The first milestone remains deliberately fail-fast until
+the happy path and failure evidence are trustworthy; recovery behavior is added only
+with an explicit policy and tests.
+
 ### Perception
 
 `sorting_arm_perception` will eventually provide `DetectObjects`. The fixed YAML
 provider and real perception must return the same contract so everything downstream
 remains unchanged.
+
+The planned real provider uses the wrist camera. It owns image processing, camera
+calibration assumptions, timestamp validation, transforms into `world`, and stable
+object identity. Reference perception logic may accelerate implementation, but its
+frames, intrinsics, object model, and error behavior must be verified against this
+cell before adoption.
 
 ## Frame and pose contract
 
