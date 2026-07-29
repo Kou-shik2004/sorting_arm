@@ -27,14 +27,24 @@ int main(int argc,char* argv[])
     // bool success = (gripper.plan(plan1) ==  moveit::core::MoveItErrorCode::SUCCESS );
     // if(success) gripper.execute(plan1);
 
-    std::vector<double> joints {0.34,-0.5,0.5,1.5,-1.3,0.8};
-    arm.setStartStateToCurrentState();
-    arm.setJointValueTarget(joints);
+    // // Joint Goal
+    // std::vector<double> joints {0.34,-0.5,0.5,1.5,-1.3,0.8};
+    // arm.setStartStateToCurrentState();
+    // arm.setJointValueTarget(joints);
+    // moveit::planning_interface::MoveGroupInterface::Plan plan1;
+    // bool succ = (arm.plan(plan1) == moveit::core::MoveItErrorCode::SUCCESS);
+    // if(succ) arm.execute(plan1);
+
+    // Pose Goal
+    auto msg = arm.getCurrentPose();
+    msg.pose.position.y -= 0.05;
+    arm.setStartStateToCurrentState();  
+    arm.setPoseTarget(msg);
+
     moveit::planning_interface::MoveGroupInterface::Plan plan1;
     bool succ = (arm.plan(plan1) == moveit::core::MoveItErrorCode::SUCCESS);
-
     if(succ) arm.execute(plan1);
-    
+
     // close the node and join the thread with our main thread
     rclcpp::shutdown();
     my_spinner.join();
