@@ -37,8 +37,8 @@
      <!-- Main moveit python launch file -->
     <include file="$(find-pkg-share sorting_arm_moveit)/launch/move_group.launch.py"/>
 
-    <include file="$(find-pkg-share sorting_arm_moveit)/launch/moveit_rviz.launch.py">
+    <!-- <include file="$(find-pkg-share sorting_arm_moveit)/launch/moveit_rviz.launch.py">
         <arg name="rviz_config" value="$(var rviz_file_path)"/>
-    </include>
+    </include> -->
 
 </launch>

@@ -1,7 +1,16 @@
 build/
 install/
 log/
-docs/
+
+# Only formal project documentation is versioned.
+/docs/*
+!/docs/plan/
+!/docs/plan/**
+!/docs/project/
+!/docs/project/**
+!/docs/rca/
+!/docs/rca/**
+
 context/
 .vscode/browse.vc.db*
 tasks/
