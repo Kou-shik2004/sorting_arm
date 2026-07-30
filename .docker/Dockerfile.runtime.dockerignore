@@ -1,0 +1,8 @@
+**
+!.docker/
+.docker/*
+!.docker/runtime-entrypoint.sh
+!.docker/smoke/
+!.docker/smoke/**
+!src/
+!src/**

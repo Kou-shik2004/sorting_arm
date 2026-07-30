@@ -16,33 +16,123 @@ permissions:
 
 jobs:
   workspace:
-    name: CI image + workspace
+    name: Tested headless image
     runs-on: ubuntu-24.04
     timeout-minutes: 60
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build the CI image
+      - name: Build and test the clean workspace
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: .docker/Dockerfile.ci
-          load: true
-          tags: sorting_arm_ci:${{ github.sha }}
+          file: .docker/Dockerfile.runtime
+          target: test
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            GITHUB_RUN_ID=${{ github.run_id }}
           cache-from: type=gha,scope=sorting-arm-ci
           cache-to: type=gha,mode=max,scope=sorting-arm-ci,ignore-error=true
           no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
           push: false
 
-      - name: Build and test the clean workspace
-        run: >-
-          docker run --rm
-          --volume "${GITHUB_WORKSPACE}:/workspace:ro"
-          "sorting_arm_ci:${GITHUB_SHA}"
+      - name: Build and load the headless runtime
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .docker/Dockerfile.runtime
+          target: runtime-headless
+          load: true
+          tags: sorting_arm_headless:${{ github.sha }}
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            GITHUB_RUN_ID=${{ github.run_id }}
+          cache-from: |
+            type=gha,scope=sorting-arm-ci
+            type=gha,scope=sorting-arm-runtime
+          cache-to: type=gha,mode=max,scope=sorting-arm-runtime,ignore-error=true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
+          push: false
+
+      - name: Validate the headless runtime
+        run: |
+          docker run --rm \
+            --env EXPECTED_SHA="${GITHUB_SHA}" \
+            "sorting_arm_headless:${GITHUB_SHA}" \
+            bash -c '
+              set -euo pipefail
+
+              test "$(cat /sorting_arm_ws/.ci/test-passed.sha)" = "${EXPECTED_SHA}"
+              ros2 pkg prefix sorting_arm_bringup
+
+              launch_arguments="$(ros2 launch sorting_arm_bringup sim.launch.xml --show-args)"
+              grep -A2 "gui" <<< "${launch_arguments}" \
+                | grep -q "default:.*true"
+
+              test ! -e /sorting_arm_ws/src
+              test ! -e /sorting_arm_ws/build
+              test ! -e /sorting_arm_ws/log
+
+              for tool in cc c++ gcc g++ cmake colcon cppcheck cpplint uncrustify; do
+                if command -v "${tool}" >/dev/null; then
+                  echo "Development tool found in runtime image: ${tool}" >&2
+                  exit 1
+                fi
+              done
+
+              for package in \
+                joint_state_publisher_gui \
+                moveit_ros_visualization \
+                moveit_setup_assistant \
+                rviz2 \
+                rviz_common \
+                rviz_default_plugins
+              do
+                if ros2 pkg prefix "${package}" >/dev/null 2>&1; then
+                  echo "GUI package found in runtime image: ${package}" >&2
+                  exit 1
+                fi
+              done
+            '
+
+      - name: Build and load the smoke-test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .docker/Dockerfile.runtime
+          target: smoke
+          load: true
+          tags: sorting_arm_smoke:${{ github.sha }}
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            GITHUB_RUN_ID=${{ github.run_id }}
+          cache-from: |
+            type=gha,scope=sorting-arm-ci
+            type=gha,scope=sorting-arm-runtime
+          cache-to: type=gha,mode=max,scope=sorting-arm-runtime,ignore-error=true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
+          push: false
+
+      - name: Run the bounded headless smoke test
+        run: |
+          set +e
+          timeout --signal=INT --kill-after=15s 180s \
+            docker run --rm --init \
+              --env ROS_DOMAIN_ID=42 \
+              --shm-size=512m \
+              "sorting_arm_smoke:${GITHUB_SHA}"
+          smoke_status=$?
+          set -e
+
+          if [ "${smoke_status}" -eq 124 ]; then
+            echo "Headless smoke test exceeded 180 seconds" >&2
+          fi
+
+          exit "${smoke_status}"

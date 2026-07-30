@@ -1,0 +1,169 @@
+# syntax=docker/dockerfile:1
+
+# this image proves the installed workspace before we make a runtime artifact
+
+FROM ros:jazzy-ros-base-noble AS build-deps
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+SHELL ["/bin/bash", "-c"]
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    printf 'APT::Install-Recommends "0";\nAPT::Install-Suggests "0";\n' \
+      > /etc/apt/apt.conf.d/99sorting-arm-runtime \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
+      cmake \
+      python3-colcon-common-extensions \
+      python3-rosdep
+
+COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
+COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
+COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
+COPY src/sorting_arm_skills/package.xml /tmp/sorting-arm-src/sorting_arm_skills/
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+ && rosdep update --rosdistro jazzy \
+ && rosdep install \
+      --from-paths /tmp/sorting-arm-src \
+      --ignore-src \
+      --rosdistro jazzy \
+      --dependency-types build \
+      --dependency-types build_export \
+      --dependency-types buildtool \
+      --dependency-types buildtool_export \
+      --dependency-types test \
+      --as-root apt:false \
+      -y
+
+ENV AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS=1
+
+FROM build-deps AS workspace-builder
+
+WORKDIR /sorting_arm_ws
+
+COPY src/ src/
+
+RUN source /opt/ros/jazzy/setup.bash \
+ && colcon --log-base log build \
+      --base-paths src \
+      --build-base build \
+      --install-base install \
+      --event-handlers console_direct+ \
+      --cmake-args \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_TESTING=ON \
+        -DPython3_EXECUTABLE=/usr/bin/python3
+
+FROM workspace-builder AS test
+
+ARG GIT_COMMIT_SHA
+ARG GITHUB_RUN_ID
+
+RUN test -n "${GIT_COMMIT_SHA}" \
+ && test -n "${GITHUB_RUN_ID}" \
+ && printf '%s\n' "${GITHUB_RUN_ID}" > /tmp/github-run-id \
+ && source /opt/ros/jazzy/setup.bash \
+ && source /sorting_arm_ws/install/setup.bash \
+ && colcon --log-base test-log test \
+      --base-paths src \
+      --build-base build \
+      --install-base install \
+      --test-result-base build \
+      --return-code-on-test-failure \
+      --event-handlers console_direct+ \
+ && colcon --log-base test-result-log test-result \
+      --test-result-base build \
+      --verbose \
+ && mkdir -p /sorting_arm_ws/.ci \
+ && printf '%s\n' "${GIT_COMMIT_SHA}" > /sorting_arm_ws/.ci/test-passed.sha
+
+# runtime starts fresh so compilers and test tools cannot leak from the builder
+
+FROM ros:jazzy-ros-core-noble AS runtime-deps
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+SHELL ["/bin/bash", "-c"]
+
+# Jazzy bundles Gazebo server and GUI libraries, but we skip every separate project GUI package
+
+COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
+COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
+COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
+COPY src/sorting_arm_skills/package.xml /tmp/sorting-arm-src/sorting_arm_skills/
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    printf 'APT::Install-Recommends "0";\nAPT::Install-Suggests "0";\n' \
+      > /etc/apt/apt.conf.d/99sorting-arm-runtime \
+ && apt-get update \
+ && rosdep update --rosdistro jazzy \
+ && rosdep install \
+      --from-paths /tmp/sorting-arm-src \
+      --ignore-src \
+      --rosdistro jazzy \
+      --dependency-types exec \
+      --skip-keys="joint_state_publisher_gui moveit_ros_visualization moveit_setup_assistant rviz2 rviz_common rviz_default_plugins" \
+      --as-root apt:false \
+      -y \
+ && rm -rf /tmp/sorting-arm-src
+
+FROM runtime-deps AS runtime-headless
+
+ARG RUNTIME_UID=1000
+ARG RUNTIME_GID=1000
+
+ENV GZ_HOMEDIR=/home/sorting_arm/.gz \
+    HOME=/home/sorting_arm \
+    RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+    ROS_LOG_DIR=/home/sorting_arm/.ros/log \
+    XDG_CACHE_HOME=/home/sorting_arm/.cache \
+    XDG_RUNTIME_DIR=/tmp/sorting-arm-runtime
+
+RUN groupadd --gid "${RUNTIME_GID}" sorting_arm \
+ && useradd \
+      --create-home \
+      --gid "${RUNTIME_GID}" \
+      --shell /bin/bash \
+      --uid "${RUNTIME_UID}" \
+      sorting_arm \
+ && mkdir -p \
+      "${GZ_HOMEDIR}" \
+      "${ROS_LOG_DIR}" \
+      "${XDG_CACHE_HOME}/gz" \
+      "${XDG_RUNTIME_DIR}" \
+ && chown -R sorting_arm:sorting_arm \
+      /home/sorting_arm \
+      "${XDG_RUNTIME_DIR}" \
+ && chmod 0700 "${XDG_RUNTIME_DIR}"
+
+COPY --from=workspace-builder /sorting_arm_ws/install/ /sorting_arm_ws/install/
+COPY --from=test /sorting_arm_ws/.ci/test-passed.sha /sorting_arm_ws/.ci/test-passed.sha
+COPY --chmod=0755 .docker/runtime-entrypoint.sh /usr/local/bin/sorting-arm-entrypoint
+
+WORKDIR /sorting_arm_ws
+USER sorting_arm
+
+ENTRYPOINT ["/usr/local/bin/sorting-arm-entrypoint"]
+CMD ["ros2", "launch", "sorting_arm_bringup", "sim.launch.xml", "gui:=false"]
+
+FROM runtime-headless AS smoke
+
+USER root
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+ && apt-get install -y --no-install-recommends ros-jazzy-launch-testing
+
+COPY --chmod=0444 .docker/smoke/test_headless.py /opt/sorting_arm_smoke/test_headless.py
+
+USER sorting_arm
+
+CMD ["launch_test", "--verbose", "/opt/sorting_arm_smoke/test_headless.py"]

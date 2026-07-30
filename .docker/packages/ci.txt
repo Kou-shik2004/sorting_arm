@@ -1,7 +1,0 @@
-# packages used only to construct and verify the workspace
-
-build-essential
-ca-certificates
-libxml2-utils
-python3-colcon-common-extensions
-python3-rosdep

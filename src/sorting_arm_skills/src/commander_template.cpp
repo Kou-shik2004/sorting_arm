@@ -8,7 +8,8 @@ using namespace std::placeholders;
 
 class Commander {
 public:
-  Commander(std::shared_ptr<rclcpp::Node> node) {
+  explicit Commander(std::shared_ptr<rclcpp::Node> node)
+  {
     node_ = node;
     arm_ = std::make_shared<MoveGroup>(node_, "arm");
     gripper_ = std::make_shared<MoveGroup>(node_, "gripper");
@@ -18,20 +19,24 @@ public:
     arm_->setMaxVelocityScalingFactor(1.0);
   }
 
-  void NamedGoal(const std::string &pose_name) {
+  void NamedGoal(const std::string & pose_name)
+  {
     arm_->setStartStateToCurrentState();
     arm_->setNamedTarget(pose_name);
     plan_and_exec(arm_);
   }
 
-  void JointGoal(const std::vector<double> &joints) {
+  void JointGoal(const std::vector<double> & joints)
+  {
     arm_->setStartStateToCurrentState();
     arm_->setJointValueTarget(joints);
     plan_and_exec(arm_);
   }
 
-  void PoseGoal(double x, double y, double z, double roll, double pitch,
-                double yaw, bool cartesian = false) {
+  void PoseGoal(
+    double x, double y, double z, double roll, double pitch,
+    double yaw, bool cartesian = false)
+  {
     tf2::Quaternion q;
     q.setRPY(roll, pitch, yaw);
 
@@ -62,33 +67,38 @@ public:
     }
   }
 
-  void OpenGrip() {
+  void OpenGrip()
+  {
     gripper_->setStartStateToCurrentState();
     gripper_->setNamedTarget("gripper_open");
     plan_and_exec(gripper_);
   }
 
-  void CloseGrip() {
+  void CloseGrip()
+  {
     gripper_->setStartStateToCurrentState();
     gripper_->setNamedTarget("gripper_close");
     plan_and_exec(gripper_);
   }
 
 private:
-  void plan_and_exec(const std::shared_ptr<MoveGroup> &interface) {
-
+  void plan_and_exec(const std::shared_ptr<MoveGroup> & interface)
+  {
     MoveGroup::Plan plan;
     bool flag =
-        (interface->plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
-    if (flag)
+      (interface->plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+    if (flag) {
       interface->execute(plan);
+    }
   }
 
-  void OpenGripperCb(const Bool &msg) {
-    if (msg.data == true)
+  void OpenGripperCb(const Bool & msg)
+  {
+    if (msg.data == true) {
       OpenGrip();
-    else
+    } else {
       CloseGrip();
+    }
   }
 
   std::shared_ptr<rclcpp::Node> node_;
@@ -97,7 +107,8 @@ private:
   std::shared_ptr<rclcpp::Subscription<Bool>> open_gripper_sub_;
 };
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("commander");
   auto commander = std::make_shared<Commander>(node);
