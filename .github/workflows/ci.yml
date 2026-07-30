@@ -79,10 +79,11 @@ jobs:
               test ! -e /sorting_arm_ws/src
               test ! -e /sorting_arm_ws/build
               test ! -e /sorting_arm_ws/log
+              test ! -e /etc/ros/rosdep
 
-              for tool in cc c++ gcc g++ cmake colcon rosdep cppcheck cpplint uncrustify; do
+              for tool in cc c++ gcc g++ cmake colcon rosdep sudo cppcheck cpplint uncrustify; do
                 if command -v "${tool}" >/dev/null; then
-                  echo "Development tool found in runtime image: ${tool}" >&2
+                  echo "Excluded tool found in runtime image: ${tool}" >&2
                   exit 1
                 fi
               done

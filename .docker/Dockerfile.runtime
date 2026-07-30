@@ -25,6 +25,8 @@ COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_de
 COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
 COPY src/sorting_arm_skills/package.xml /tmp/sorting-arm-src/sorting_arm_skills/
 
+# Installing rosdep does not guarantee that its system source list exists.
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
@@ -105,6 +107,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
  && apt-get update \
  && apt-get install -y --no-install-recommends python3-rosdep \
  && command -v rosdep >/dev/null \
+ && if [ ! -s /etc/ros/rosdep/sources.list.d/20-default.list ]; then \
+      rosdep init; \
+    fi \
+ && test -s /etc/ros/rosdep/sources.list.d/20-default.list \
  && rosdep update --rosdistro jazzy \
  && rosdep install \
       --from-paths /tmp/sorting-arm-src \
@@ -116,8 +122,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       -y \
  && apt-get purge -y python3-rosdep \
  && apt-get autoremove -y \
+ && rm -rf \
+      /etc/ros/rosdep \
+      /root/.ros/rosdep \
+      /tmp/sorting-arm-src \
  && ! command -v rosdep >/dev/null \
- && rm -rf /root/.ros/rosdep /tmp/sorting-arm-src
+ && test ! -e /etc/ros/rosdep \
+ && test ! -e /root/.ros/rosdep
 
 FROM runtime-deps AS runtime-headless
 
