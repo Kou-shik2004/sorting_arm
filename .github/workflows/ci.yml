@@ -80,7 +80,7 @@ jobs:
               test ! -e /sorting_arm_ws/build
               test ! -e /sorting_arm_ws/log
 
-              for tool in cc c++ gcc g++ cmake colcon cppcheck cpplint uncrustify; do
+              for tool in cc c++ gcc g++ cmake colcon rosdep cppcheck cpplint uncrustify; do
                 if command -v "${tool}" >/dev/null; then
                   echo "Development tool found in runtime image: ${tool}" >&2
                   exit 1

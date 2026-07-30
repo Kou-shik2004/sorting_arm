@@ -103,6 +103,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     printf 'APT::Install-Recommends "0";\nAPT::Install-Suggests "0";\n' \
       > /etc/apt/apt.conf.d/99sorting-arm-runtime \
  && apt-get update \
+ && apt-get install -y --no-install-recommends python3-rosdep \
+ && command -v rosdep >/dev/null \
  && rosdep update --rosdistro jazzy \
  && rosdep install \
       --from-paths /tmp/sorting-arm-src \
@@ -112,7 +114,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       --skip-keys="joint_state_publisher_gui moveit_ros_visualization moveit_setup_assistant rviz2 rviz_common rviz_default_plugins" \
       --as-root apt:false \
       -y \
- && rm -rf /tmp/sorting-arm-src
+ && apt-get purge -y python3-rosdep \
+ && apt-get autoremove -y \
+ && ! command -v rosdep >/dev/null \
+ && rm -rf /root/.ros/rosdep /tmp/sorting-arm-src
 
 FROM runtime-deps AS runtime-headless
 
