@@ -65,10 +65,8 @@ in [Gripper controller configuration mismatch](gripper-controller-configuration.
 ## Resolution
 
 Use `MoveGroupInterface` for arm motion and `control_msgs/action/GripperCommand`
-directly for gripper motion, as recorded in
-[architectural decisions D2 and D3](../project/decisions.md#current-decisions).
-Keep the SRDF gripper group for semantic modelling and RViz configuration; do not
-make it the runtime command path.
+directly for gripper motion. Keep the SRDF gripper group for semantic modelling and
+RViz configuration; do not make it the runtime command path.
 
 Before proposing a configuration change for an implementation failure, check the applicable
 architectural decision and confirm that the failing program uses the intended abstraction. Do not

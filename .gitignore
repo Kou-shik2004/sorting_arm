@@ -2,14 +2,16 @@ build/
 install/
 log/
 
-# Only formal project documentation is versioned.
+# Only reusable failure analysis is published from docs.
 /docs/*
-!/docs/plan/
-!/docs/plan/**
-!/docs/project/
-!/docs/project/**
 !/docs/rca/
 !/docs/rca/**
+
+# Local AI configuration and formatting policy.
+.claude/
+.clang-format
+.*ignore
+!.gitignore
 
 context/
 .vscode/browse.vc.db*

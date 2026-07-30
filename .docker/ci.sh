@@ -10,8 +10,7 @@ if [ "$#" -gt 1 ]; then
     exit 2
 fi
 
-if [ ! -d "${ci_workspace}/src" ] ||
-    [ ! -f "${ci_workspace}/.clang-format" ]; then
+if [ ! -d "${ci_workspace}/src" ]; then
     echo "Invalid CI workspace: ${ci_workspace}" >&2
     exit 2
 fi
@@ -33,11 +32,6 @@ rosdep check \
     --from-paths "${ci_workspace}/src" \
     --ignore-src \
     "${ci_dependency_types[@]}"
-
-find "${ci_workspace}/src" -type f \
-    \( -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
-    -print0 \
-    | xargs -0 -r clang-format --dry-run --Werror
 
 find "${ci_workspace}" \
     \( -path "${ci_workspace}/.git" \

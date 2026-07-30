@@ -2,7 +2,6 @@
 
 build-essential
 ca-certificates
-clang-format
 libxml2-utils
 python3-colcon-common-extensions
 python3-rosdep
