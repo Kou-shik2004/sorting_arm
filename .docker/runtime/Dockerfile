@@ -131,12 +131,12 @@ ENV HOME=/home/ubuntu
 
 USER ubuntu
 
-RUN --mount=type=bind,source=.docker/resolve-runtime-deps.sh,target=/tmp/resolve-runtime-deps.sh,readonly \
-    --mount=type=bind,source=.docker/packages/runtime-skip-keys.txt,target=/tmp/runtime-skip-keys.txt,readonly \
+RUN --mount=type=bind,source=.docker/runtime/resolve-dependencies.sh,target=/tmp/resolve-dependencies.sh,readonly \
+    --mount=type=bind,source=.docker/runtime/packages/gui-skip-keys.txt,target=/tmp/gui-skip-keys.txt,readonly \
     rosdep update --rosdistro jazzy \
- && bash /tmp/resolve-runtime-deps.sh \
+ && bash /tmp/resolve-dependencies.sh \
       /tmp/sorting-arm-src \
-      /tmp/runtime-skip-keys.txt \
+      /tmp/gui-skip-keys.txt \
       /tmp/runtime-apt.txt
 
 FROM runtime-base AS runtime-deps
@@ -176,8 +176,8 @@ ENV HOME=/home/ubuntu
 
 USER ubuntu
 
-RUN --mount=type=bind,source=.docker/packages/runtime-skip-keys.txt,target=/tmp/runtime-skip-keys.txt,readonly \
-    skip_keys="$(grep -vE '^[[:space:]]*(#|$)' /tmp/runtime-skip-keys.txt | tr '\n' ' ')" \
+RUN --mount=type=bind,source=.docker/runtime/packages/gui-skip-keys.txt,target=/tmp/gui-skip-keys.txt,readonly \
+    skip_keys="$(grep -vE '^[[:space:]]*(#|$)' /tmp/gui-skip-keys.txt | tr '\n' ' ')" \
  && test -n "${skip_keys}" \
  && rosdep update --rosdistro jazzy \
  && rosdep check \
@@ -206,7 +206,7 @@ RUN install -d -o ubuntu -g ubuntu -m 0755 \
 
 COPY --from=workspace-builder /sorting_arm_ws/install/ /sorting_arm_ws/install/
 COPY --from=test /sorting_arm_ws/.ci/test-passed.sha /sorting_arm_ws/.ci/test-passed.sha
-COPY --chmod=0755 .docker/runtime-entrypoint.sh /usr/local/bin/sorting-arm-entrypoint
+COPY --chmod=0755 .docker/runtime/entrypoint.sh /usr/local/bin/sorting-arm-entrypoint
 
 WORKDIR /sorting_arm_ws
 USER ubuntu
@@ -226,7 +226,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN install -d -o root -g root -m 0755 /opt/sorting_arm_smoke
 
 COPY --chown=root:root --chmod=0444 \
-  .docker/smoke/test_headless.py \
+  .docker/runtime/smoke/test_headless.py \
   /opt/sorting_arm_smoke/test_headless.py
 
 RUN test "$(stat -c %a /opt/sorting_arm_smoke)" = "755" \

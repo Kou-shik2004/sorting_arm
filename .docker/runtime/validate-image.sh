@@ -7,7 +7,7 @@ expected_sha="${2:?expected commit marker is required}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 runtime_skip_keys="$(
   grep -vE '^[[:space:]]*(#|$)' \
-    "${script_dir}/packages/runtime-skip-keys.txt" \
+    "${script_dir}/packages/gui-skip-keys.txt" \
     | tr '\n' ' '
 )"
 

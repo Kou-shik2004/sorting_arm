@@ -33,7 +33,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: .docker/Dockerfile.runtime
+          file: .docker/runtime/Dockerfile
           target: test
           build-args: |
             GIT_COMMIT_SHA=${{ github.sha }}
@@ -48,7 +48,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: .docker/Dockerfile.runtime
+          file: .docker/runtime/Dockerfile
           target: runtime-deps-check
           cache-from: type=gha,scope=sorting-arm-runtime
           cache-to: type=gha,mode=max,scope=sorting-arm-runtime,ignore-error=true
@@ -60,7 +60,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: .docker/Dockerfile.runtime
+          file: .docker/runtime/Dockerfile
           target: runtime-headless
           load: true
           tags: sorting_arm_headless:${{ github.sha }}
@@ -76,7 +76,7 @@ jobs:
 
       - name: Validate the headless runtime
         run: |
-          bash .docker/validate-runtime-image.sh \
+          bash .docker/runtime/validate-image.sh \
             "sorting_arm_headless:${GITHUB_SHA}" \
             "${GITHUB_SHA}"
 
@@ -84,7 +84,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: .docker/Dockerfile.runtime
+          file: .docker/runtime/Dockerfile
           target: smoke
           load: true
           tags: sorting_arm_smoke:${{ github.sha }}

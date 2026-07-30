@@ -1,0 +1,14 @@
+**
+!.docker/
+.docker/*
+!.docker/runtime/
+.docker/runtime/*
+!.docker/runtime/packages/
+.docker/runtime/packages/*
+!.docker/runtime/packages/gui-skip-keys.txt
+!.docker/runtime/resolve-dependencies.sh
+!.docker/runtime/entrypoint.sh
+!.docker/runtime/smoke/
+!.docker/runtime/smoke/**
+!src/
+!src/**
