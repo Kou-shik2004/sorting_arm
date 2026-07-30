@@ -95,6 +95,24 @@ SHELL ["/bin/bash", "-c"]
 
 # Jazzy bundles Gazebo server and GUI libraries, but we skip every separate project GUI package
 
+RUN --mount=type=bind,source=.docker/packages/runtime.txt,target=/tmp/runtime.txt,readonly \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    runtime_packages="$(grep -vE '^[[:space:]]*(#|$)' /tmp/runtime.txt)" \
+ && test -n "${runtime_packages}" \
+ && printf 'APT::Install-Recommends "0";\nAPT::Install-Suggests "0";\n' \
+      > /etc/apt/apt.conf.d/99sorting-arm-runtime \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends ${runtime_packages}
+
+# we verify the package list with rosdep in a throwaway stage so those tools never reach runtime
+
+FROM runtime-deps AS runtime-deps-check
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+SHELL ["/bin/bash", "-c"]
+
 COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
 COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
@@ -102,33 +120,18 @@ COPY src/sorting_arm_skills/package.xml /tmp/sorting-arm-src/sorting_arm_skills/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    printf 'APT::Install-Recommends "0";\nAPT::Install-Suggests "0";\n' \
-      > /etc/apt/apt.conf.d/99sorting-arm-runtime \
- && apt-get update \
+    apt-get update \
  && apt-get install -y --no-install-recommends python3-rosdep \
  && command -v rosdep >/dev/null \
- && if [ ! -s /etc/ros/rosdep/sources.list.d/20-default.list ]; then \
-      rosdep init; \
-    fi \
+ && rosdep init \
  && test -s /etc/ros/rosdep/sources.list.d/20-default.list \
  && rosdep update --rosdistro jazzy \
- && rosdep install \
+ && rosdep check \
       --from-paths /tmp/sorting-arm-src \
       --ignore-src \
       --rosdistro jazzy \
       --dependency-types exec \
-      --skip-keys="joint_state_publisher_gui moveit_ros_visualization moveit_setup_assistant rviz2 rviz_common rviz_default_plugins" \
-      --as-root apt:false \
-      -y \
- && apt-get purge -y python3-rosdep \
- && apt-get autoremove -y \
- && rm -rf \
-      /etc/ros/rosdep \
-      /root/.ros/rosdep \
-      /tmp/sorting-arm-src \
- && ! command -v rosdep >/dev/null \
- && test ! -e /etc/ros/rosdep \
- && test ! -e /root/.ros/rosdep
+      --skip-keys="joint_state_publisher_gui moveit_ros_visualization moveit_setup_assistant rviz2 rviz_common rviz_default_plugins"
 
 FROM runtime-deps AS runtime-headless
 

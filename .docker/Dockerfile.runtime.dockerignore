@@ -1,6 +1,9 @@
 **
 !.docker/
 .docker/*
+!.docker/packages/
+.docker/packages/*
+!.docker/packages/runtime.txt
 !.docker/runtime-entrypoint.sh
 !.docker/smoke/
 !.docker/smoke/**

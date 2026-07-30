@@ -43,6 +43,17 @@ jobs:
           no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
           push: false
 
+      - name: Verify the headless runtime dependencies
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .docker/Dockerfile.runtime
+          target: runtime-deps-check
+          cache-from: type=gha,scope=sorting-arm-runtime
+          cache-to: type=gha,mode=max,scope=sorting-arm-runtime,ignore-error=true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
+          push: false
+
       - name: Build and load the headless runtime
         uses: docker/build-push-action@v7
         with:
@@ -80,6 +91,8 @@ jobs:
               test ! -e /sorting_arm_ws/build
               test ! -e /sorting_arm_ws/log
               test ! -e /etc/ros/rosdep
+              test ! -e /tmp/runtime.txt
+              test ! -e /tmp/sorting-arm-src
 
               for tool in cc c++ gcc g++ cmake colcon rosdep sudo cppcheck cpplint uncrustify; do
                 if command -v "${tool}" >/dev/null; then
