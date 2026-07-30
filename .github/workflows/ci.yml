@@ -33,7 +33,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: .docker/Dockerfile.runtime
+          file: .docker/runtime/Dockerfile
           target: test
           build-args: |
             GIT_COMMIT_SHA=${{ github.sha }}
@@ -41,13 +41,26 @@ jobs:
           cache-from: type=gha,scope=sorting-arm-ci
           cache-to: type=gha,mode=max,scope=sorting-arm-ci,ignore-error=true
           no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
+          outputs: type=cacheonly
+          push: false
+
+      - name: Verify the headless runtime dependencies
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .docker/runtime/Dockerfile
+          target: runtime-deps-check
+          cache-from: type=gha,scope=sorting-arm-runtime
+          cache-to: type=gha,mode=max,scope=sorting-arm-runtime,ignore-error=true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
+          outputs: type=cacheonly
           push: false
 
       - name: Build and load the headless runtime
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: .docker/Dockerfile.runtime
+          file: .docker/runtime/Dockerfile
           target: runtime-headless
           load: true
           tags: sorting_arm_headless:${{ github.sha }}
@@ -63,51 +76,15 @@ jobs:
 
       - name: Validate the headless runtime
         run: |
-          docker run --rm \
-            --env EXPECTED_SHA="${GITHUB_SHA}" \
+          bash .docker/runtime/validate-image.sh \
             "sorting_arm_headless:${GITHUB_SHA}" \
-            bash -c '
-              set -euo pipefail
-
-              test "$(cat /sorting_arm_ws/.ci/test-passed.sha)" = "${EXPECTED_SHA}"
-              ros2 pkg prefix sorting_arm_bringup
-
-              launch_arguments="$(ros2 launch sorting_arm_bringup sim.launch.xml --show-args)"
-              grep -A2 "gui" <<< "${launch_arguments}" \
-                | grep -q "default:.*true"
-
-              test ! -e /sorting_arm_ws/src
-              test ! -e /sorting_arm_ws/build
-              test ! -e /sorting_arm_ws/log
-              test ! -e /etc/ros/rosdep
-
-              for tool in cc c++ gcc g++ cmake colcon rosdep sudo cppcheck cpplint uncrustify; do
-                if command -v "${tool}" >/dev/null; then
-                  echo "Excluded tool found in runtime image: ${tool}" >&2
-                  exit 1
-                fi
-              done
-
-              for package in \
-                joint_state_publisher_gui \
-                moveit_ros_visualization \
-                moveit_setup_assistant \
-                rviz2 \
-                rviz_common \
-                rviz_default_plugins
-              do
-                if ros2 pkg prefix "${package}" >/dev/null 2>&1; then
-                  echo "GUI package found in runtime image: ${package}" >&2
-                  exit 1
-                fi
-              done
-            '
+            "${GITHUB_SHA}"
 
       - name: Build and load the smoke-test image
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: .docker/Dockerfile.runtime
+          file: .docker/runtime/Dockerfile
           target: smoke
           load: true
           tags: sorting_arm_smoke:${{ github.sha }}
