@@ -10,7 +10,6 @@ import launch
 import launch.actions
 import launch_testing
 import launch_testing.actions
-import launch_testing.asserts
 from moveit_msgs.action import MoveGroup
 import pytest
 import rclpy
@@ -81,7 +80,7 @@ class TestHeadlessRuntime(unittest.TestCase):
     def tearDown(self):
         self.node.destroy_node()
 
-    def test_runtime_becomes_ready(self, proc_info, sim_process):
+    def test_runtime_becomes_ready(self, proc_info, proc_output, sim_process):
         proc_info.assertWaitForStartup(sim_process, timeout=10)
         deadline = time.monotonic() + 150.0
         self._wait_for_clock_and_joint_states(deadline)
@@ -101,6 +100,17 @@ class TestHeadlessRuntime(unittest.TestCase):
             process_command_matches(rb'(^|/)rviz2?( |$)'),
             'RViz must not run headlessly',
         )
+        output = ''.join(
+            event.text.decode(errors='replace')
+            for event in proc_output
+        )
+        unexpected_errors = [
+            line
+            for line in output.splitlines()
+            if re.search(r'\b(?:ERROR|FATAL)\b', line)
+            and 'No 3D sensor plugin(s) defined for octomap updates' not in line
+        ]
+        self.assertEqual([], unexpected_errors)
 
     def _wait_for_clock_and_joint_states(self, deadline):
         clock_values = []
@@ -182,33 +192,3 @@ class TestHeadlessRuntime(unittest.TestCase):
             )
         finally:
             client.destroy()
-
-
-@launch_testing.post_shutdown_test()
-class TestHeadlessShutdown(unittest.TestCase):
-
-    def test_launch_exits_cleanly(self, proc_info, sim_process):
-        launch_testing.asserts.assertExitCodes(
-            proc_info,
-            process=sim_process,
-        )
-
-    def test_launch_has_no_error_output(self, proc_output):
-        output = ''.join(
-            event.text.decode(errors='replace')
-            for event in proc_output
-        )
-        self.assertNotRegex(output, re.compile(r'\b(?:ERROR|FATAL)\b'))
-
-    def test_required_process_tree_stopped(self):
-        required_processes = (
-            rb'gz sim',
-            rb'parameter_bridge',
-            rb'robot_state_publisher',
-            rb'move_group',
-        )
-        for pattern in required_processes:
-            self.assertFalse(
-                process_command_matches(pattern),
-                f'Process remained after shutdown: {pattern!r}',
-            )

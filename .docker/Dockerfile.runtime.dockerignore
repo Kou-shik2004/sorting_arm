@@ -3,7 +3,8 @@
 .docker/*
 !.docker/packages/
 .docker/packages/*
-!.docker/packages/runtime.txt
+!.docker/packages/runtime-skip-keys.txt
+!.docker/resolve-runtime-deps.sh
 !.docker/runtime-entrypoint.sh
 !.docker/smoke/
 !.docker/smoke/**

@@ -1,0 +1,8 @@
+# gui packages excluded from the headless runtime
+
+joint_state_publisher_gui
+moveit_ros_visualization
+moveit_setup_assistant
+rviz2
+rviz_common
+rviz_default_plugins

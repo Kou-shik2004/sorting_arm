@@ -6,7 +6,11 @@ FROM ros:jazzy-ros-base-noble AS build-deps
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-SHELL ["/bin/bash", "-c"]
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN rm -f /etc/apt/apt.conf.d/docker-clean \
+ && printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+      > /etc/apt/apt.conf.d/keep-cache
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -85,33 +89,28 @@ RUN test -n "${GIT_COMMIT_SHA}" \
  && mkdir -p /sorting_arm_ws/.ci \
  && printf '%s\n' "${GIT_COMMIT_SHA}" > /sorting_arm_ws/.ci/test-passed.sha
 
-# runtime starts fresh so compilers and test tools cannot leak from the builder
+# runtime starts fresh so our build toolchain cannot leak from the builder
 
-FROM ros:jazzy-ros-core-noble AS runtime-deps
+FROM ros:jazzy-ros-core-noble AS runtime-base
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-SHELL ["/bin/bash", "-c"]
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Jazzy bundles Gazebo server and GUI libraries, but we skip every separate project GUI package
-
-RUN --mount=type=bind,source=.docker/packages/runtime.txt,target=/tmp/runtime.txt,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    runtime_packages="$(grep -vE '^[[:space:]]*(#|$)' /tmp/runtime.txt)" \
- && test -n "${runtime_packages}" \
+RUN rm -f /etc/apt/apt.conf.d/docker-clean \
+ && printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+      > /etc/apt/apt.conf.d/keep-cache \
  && printf 'APT::Install-Recommends "0";\nAPT::Install-Suggests "0";\n' \
-      > /etc/apt/apt.conf.d/99sorting-arm-runtime \
- && apt-get update \
- && apt-get install -y --no-install-recommends ${runtime_packages}
+      > /etc/apt/apt.conf.d/99sorting-arm-runtime
 
-# we verify the package list with rosdep in a throwaway stage so those tools never reach runtime
+# ubuntu owns the non-root runtime account, so we verify it before using it
 
-FROM runtime-deps AS runtime-deps-check
+RUN test "$(id -u ubuntu)" -ne 0 \
+ && test "$(getent passwd ubuntu | cut -d: -f6)" = "/home/ubuntu" \
+ && test -d /home/ubuntu \
+ && test "$(stat -c %u:%g /home/ubuntu)" = "$(id -u ubuntu):$(id -g ubuntu)"
 
-ARG DEBIAN_FRONTEND=noninteractive
-
-SHELL ["/bin/bash", "-c"]
+FROM runtime-base AS runtime-dependency-resolver
 
 COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
@@ -123,51 +122,94 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update \
  && apt-get install -y --no-install-recommends python3-rosdep \
  && command -v rosdep >/dev/null \
- && rosdep init \
- && test -s /etc/ros/rosdep/sources.list.d/20-default.list \
+ && if [ ! -s /etc/ros/rosdep/sources.list.d/20-default.list ]; then \
+      rosdep init; \
+    fi \
+ && test -s /etc/ros/rosdep/sources.list.d/20-default.list
+
+ENV HOME=/home/ubuntu
+
+USER ubuntu
+
+RUN --mount=type=bind,source=.docker/resolve-runtime-deps.sh,target=/tmp/resolve-runtime-deps.sh,readonly \
+    --mount=type=bind,source=.docker/packages/runtime-skip-keys.txt,target=/tmp/runtime-skip-keys.txt,readonly \
+    rosdep update --rosdistro jazzy \
+ && bash /tmp/resolve-runtime-deps.sh \
+      /tmp/sorting-arm-src \
+      /tmp/runtime-skip-keys.txt \
+      /tmp/runtime-apt.txt
+
+FROM runtime-base AS runtime-deps
+
+RUN --mount=type=bind,from=runtime-dependency-resolver,source=/tmp/runtime-apt.txt,target=/tmp/runtime-apt.txt,readonly \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    runtime_packages="$(tr '\n' ' ' < /tmp/runtime-apt.txt)" \
+ && test -n "${runtime_packages}" \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends ${runtime_packages}
+
+# we verify the installed dependencies with rosdep in a throwaway stage
+
+FROM runtime-deps AS runtime-deps-check
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
+COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
+COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
+COPY src/sorting_arm_skills/package.xml /tmp/sorting-arm-src/sorting_arm_skills/
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+ && apt-get install -y --no-install-recommends python3-rosdep \
+ && command -v rosdep >/dev/null \
+ && if [ ! -s /etc/ros/rosdep/sources.list.d/20-default.list ]; then \
+      rosdep init; \
+    fi \
+ && test -s /etc/ros/rosdep/sources.list.d/20-default.list
+
+ENV HOME=/home/ubuntu
+
+USER ubuntu
+
+RUN --mount=type=bind,source=.docker/packages/runtime-skip-keys.txt,target=/tmp/runtime-skip-keys.txt,readonly \
+    skip_keys="$(grep -vE '^[[:space:]]*(#|$)' /tmp/runtime-skip-keys.txt | tr '\n' ' ')" \
+ && test -n "${skip_keys}" \
  && rosdep update --rosdistro jazzy \
  && rosdep check \
       --from-paths /tmp/sorting-arm-src \
       --ignore-src \
       --rosdistro jazzy \
       --dependency-types exec \
-      --skip-keys="joint_state_publisher_gui moveit_ros_visualization moveit_setup_assistant rviz2 rviz_common rviz_default_plugins"
+      --skip-keys="${skip_keys}"
 
 FROM runtime-deps AS runtime-headless
 
-ARG RUNTIME_UID=1000
-ARG RUNTIME_GID=1000
-
-ENV GZ_HOMEDIR=/home/sorting_arm/.gz \
-    HOME=/home/sorting_arm \
+ENV GZ_HOMEDIR=/home/ubuntu/.gz \
+    HOME=/home/ubuntu \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
-    ROS_LOG_DIR=/home/sorting_arm/.ros/log \
-    XDG_CACHE_HOME=/home/sorting_arm/.cache \
+    ROS_LOG_DIR=/home/ubuntu/.ros/log \
+    XDG_CACHE_HOME=/home/ubuntu/.cache \
     XDG_RUNTIME_DIR=/tmp/sorting-arm-runtime
 
-RUN groupadd --gid "${RUNTIME_GID}" sorting_arm \
- && useradd \
-      --create-home \
-      --gid "${RUNTIME_GID}" \
-      --shell /bin/bash \
-      --uid "${RUNTIME_UID}" \
-      sorting_arm \
- && mkdir -p \
+RUN install -d -o ubuntu -g ubuntu -m 0755 \
       "${GZ_HOMEDIR}" \
+      /home/ubuntu/.ros \
       "${ROS_LOG_DIR}" \
+      "${XDG_CACHE_HOME}" \
       "${XDG_CACHE_HOME}/gz" \
-      "${XDG_RUNTIME_DIR}" \
- && chown -R sorting_arm:sorting_arm \
-      /home/sorting_arm \
-      "${XDG_RUNTIME_DIR}" \
- && chmod 0700 "${XDG_RUNTIME_DIR}"
+ && install -d -o ubuntu -g ubuntu -m 0700 "${XDG_RUNTIME_DIR}"
 
 COPY --from=workspace-builder /sorting_arm_ws/install/ /sorting_arm_ws/install/
 COPY --from=test /sorting_arm_ws/.ci/test-passed.sha /sorting_arm_ws/.ci/test-passed.sha
 COPY --chmod=0755 .docker/runtime-entrypoint.sh /usr/local/bin/sorting-arm-entrypoint
 
 WORKDIR /sorting_arm_ws
-USER sorting_arm
+USER ubuntu
 
 ENTRYPOINT ["/usr/local/bin/sorting-arm-entrypoint"]
 CMD ["ros2", "launch", "sorting_arm_bringup", "sim.launch.xml", "gui:=false"]
@@ -181,8 +223,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update \
  && apt-get install -y --no-install-recommends ros-jazzy-launch-testing
 
-COPY --chmod=0444 .docker/smoke/test_headless.py /opt/sorting_arm_smoke/test_headless.py
+RUN install -d -o root -g root -m 0755 /opt/sorting_arm_smoke
 
-USER sorting_arm
+COPY --chown=root:root --chmod=0444 \
+  .docker/smoke/test_headless.py \
+  /opt/sorting_arm_smoke/test_headless.py
+
+RUN test "$(stat -c %a /opt/sorting_arm_smoke)" = "755" \
+ && test "$(stat -c %a /opt/sorting_arm_smoke/test_headless.py)" = "444"
+
+USER ubuntu
 
 CMD ["launch_test", "--verbose", "/opt/sorting_arm_smoke/test_headless.py"]
