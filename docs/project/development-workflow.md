@@ -106,5 +106,27 @@ the code.
 
 The repository does not require a permanent development branch. Work may happen
 directly on `main` through small verified commits or on a short-lived branch when
-isolation and review are useful. Commit messages describe one project outcome in
-plain language.
+isolation and review are useful.
+
+Commit subjects use `type(optional-scope): plain-language outcome`. Use `feat` for a
+new user-visible capability, `fix` for a defect, `ci` for pipeline behavior, `test`
+for test-only work, `docs` for documentation-only work, `refactor` for
+behavior-preserving code structure, `build` for build/dependency changes, and
+`chore` only when no more precise type fits.
+
+Keep the subject simple and human-written. After one blank line, always use the body to
+explain why the change was needed, the important behavior or architecture decision,
+the evidence gathered, and any remaining limitation.
+
+For example:
+
+```text
+ci: add minimal containerized workspace checks
+
+Use the Jazzy ROS base image and install only current build and test dependencies.
+Run dependency, formatting, compilation, URDF, launch, and test checks from clean
+temporary outputs on every push and pull request.
+
+Verified all four packages locally. Docker-hosted and remote Actions evidence remain
+pending.
+```

@@ -16,11 +16,7 @@ find_package(rclcpp REQUIRED)
 add_executable(commander src/commander.cpp)
 ament_target_dependencies(commander rclcpp moveit_ros_planning_interface)
 
-add_executable(moveit_check src/moveit_ready_check.cpp)
-ament_target_dependencies(moveit_check moveit_ros_planning_interface rclcpp)
-
-install( TARGETS 
-  moveit_check
+install( TARGETS
   commander
   DESTINATION lib/${PROJECT_NAME}
 )

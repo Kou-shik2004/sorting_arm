@@ -22,17 +22,16 @@ test. Step 8 is the maturity gate for that work. The three levels are defined in
 
 ## Step 0 — runtime prerequisites
 
-**Status:** In progress. The read-only MoveIt readiness check exists; its runtime
-evidence and the remaining controller, home-state, and gripper measurements are
-pending.
+**Status:** In progress. The experimental `moveit_check` executable was removed.
+Controller, MoveIt, home-state, and gripper measurements are still pending.
 
 **Purpose:** Establish trustworthy controller, frame, home-state, and gripper behavior
 before judging motion code.
 
-**Files:** `src/sorting_arm_skills/src/moveit_ready_check.cpp` and the existing
-`sorting_arm_moveit/config/sorting_arm.srdf` and
-`sorting_arm_bringup/config/ros2_controllers.yaml`. Configuration changes require
-measured evidence.
+**Files:** The existing `sorting_arm_moveit/config/sorting_arm.srdf` and
+`sorting_arm_bringup/config/ros2_controllers.yaml`. Step 0 currently has no dedicated
+C++ checker. The measurement method will be chosen when Koushik runs this step.
+Configuration changes require measured evidence.
 
 **Learn:** Controller manager states, named SRDF states, joint-state readings,
 `GripperCommand` result fields, planning frame, and end-effector link.
@@ -386,39 +385,32 @@ accepted for use by higher-level packages.
 
 ## Step 8 — continuous-integration maturity gate
 
-**Status:** Ready to begin in parallel. No remote workflow exists yet; the full gate
-is evaluated after Step 7 passes locally.
+**Status:** Level 1 clean-workspace CI and the independent, path-filtered Level 2
+development-image workflow are implemented. The Level 1 image builds on the host,
+and its clean verifier passes against the read-only workspace. Remote workflow
+evidence remains pending. The full maturity gate is evaluated after Step 7 passes
+locally.
 
 **Purpose:** Mature the early CI foundation into independent evidence for package
 metadata, dependencies, image construction, clean builds, and tests.
 
-**Files:** `.github/workflows/ci.yml` first. Add a separate image or scheduled
-simulation workflow only when its corresponding level is implemented.
+**Design and verification contract:** See the
+[continuous integration plan](continuous-integration.md) for the exact level claims,
+workflow choices, failure behavior, deliberate omissions, and future gates.
 
-**Learn:** Workflow, event, job, runner, step, action, shell exit status,
-`push`/`pull_request`, Docker image builds, `colcon build`, `colcon test`, verbose
-test results, workflow logs, and required checks.
+**Current evidence (2026-07-30):** The clean verifier resolved build/test
+dependencies; enforced C++ formatting, Bash syntax, CMake style, Python syntax, and
+XML/xacro/SRDF well-formedness; expanded and validated all four xacro entrypoints;
+asserted the static `world`, `tcp`, and SRDF `arm` chain contracts; and built all
+four packages from clean temporary Release outputs. All three XML launch files were
+validated. Colcon ran every registered test and reported zero failures from the
+current zero registered tests. An invalid workspace returned status 2. Both workflow
+files pass `actionlint` v1.7.12.
 
-**Work checklist:**
-
-- Establish per-change clean workspace build and validation early.
-- Validate the development image independently when its inputs change.
-- Build the workspace from a clean checkout.
-- Run tests and always expose verbose results on failure.
-- Explain every workflow line.
-- Keep full Gazebo physics out of the per-change job.
-- Add manual or scheduled simulation smoke only after a deterministic headless path
-  exists.
-- Run the workflow remotely and require it to pass before this gate closes.
-- Configure a required check only when the repository owner chooses to.
-
-**Failure symptoms:** CI succeeds through cached local outputs, a test failure is
-masked, logs omit `colcon test-result`, image construction is coupled to every C++
-edit, or a flaky physics launch blocks ordinary source changes.
-
-**Verification:** One remote `push` or pull-request run builds and tests successfully;
-a development-image change triggers its independent validation; a deliberately
-failing branch proves the normal check turns red and points to the failing step.
+**Remaining evidence:** Confirm the remote Level 1 workflow passes; manually run
+Level 2 once without cached layers; prove a matching path change triggers Level 2;
+and prove an intentional verifier failure turns Level 1 red with useful output.
+Required-check configuration remains a repository-owner choice.
 
 **Stop gate:** The Level 1 and Level 2 remote results are green, every workflow step
 is reviewable, and Level 3 remains explicitly manual/scheduled until its own
@@ -533,15 +525,16 @@ independently before an executive exists.
 
 **Status:** Future.
 
-**Purpose:** Add task order and label-to-slot routing outside the manipulation layer.
+**Purpose:** Add one automatic sorting cycle and label-to-slot routing outside the
+manipulation layer.
 
 **Files:** A future `sorting_arm_executive` package with fixed-source configuration
 and parser, `DetectObjects` provider, BehaviorTree nodes/tree, executive node/main,
 and pure allocation/order tests.
 
 **Learn:** BehaviorTree Sequence semantics, blackboard data, asynchronous ROS
-service/action leaves, stable object IDs, deterministic slot allocation, and
-fail-fast orchestration.
+service/action leaves, explicit dependency readiness, stable object IDs,
+deterministic slot allocation, and fail-fast orchestration.
 
 **Work checklist:**
 
@@ -550,6 +543,11 @@ fail-fast orchestration.
 - Allocate ordered, distinct slots by opaque label.
 - For each object, call Pick then Place.
 - Call Home after all objects succeed.
+- Start exactly one cycle after all declared runtime dependencies report ready.
+- Expose the active object, child operation/phase, and completed count through logs
+  and the selected tree-observation mechanism.
+- On tree halt or shutdown, cancel the active child action and preserve its terminal
+  object state.
 - Stop the first milestone on the first typed failure.
 - Reject unknown labels, exhausted slots, and a second static cycle until reset.
 - Keep motion/scene/gripper details out of tree nodes.
@@ -557,8 +555,9 @@ fail-fast orchestration.
 - Add bringup integration only after independent executive tests pass.
 
 **Failure symptoms:** Labels change motion mechanics, slots are reused, blocking leaves
-freeze the executor, failures are ignored, or the executive manipulates MoveIt
-directly.
+freeze the executor, the cycle begins before readiness, a second cycle starts without
+reset, child cancellation is abandoned, failures are ignored, or the executive
+manipulates MoveIt directly.
 
 **Verification:** Fake tests prove
 Detect → Sync → four Pick/Place pairs → Home and all failure stops; runtime evidence
@@ -600,6 +599,101 @@ and no downstream source changes.
 **Stop gate:** Perception is a contract-compatible provider, not a new application
 architecture.
 
+## Step 14 — bounded recovery and final-state reporting
+
+**Status:** Future; begin only after the baseline sorting and perception contracts
+have independent evidence.
+
+**Purpose:** Turn the documented BehaviorTree and action boundaries into measured
+recovery behavior instead of leaving recovery as an architectural aspiration.
+
+**Files:** `sorting_recovery.xml`, executive recovery conditions/state mapping,
+`test_recovery_policy.cpp`, recovery parameters in `sorting.yaml`, and completion
+reporting required by the proven policy.
+
+**Learn:** BehaviorTree Fallback and bounded-retry semantics, halting asynchronous
+action leaves, causal error preservation, object-state-dependent recovery, safe-drop
+policy, and deterministic fault injection.
+
+**Work checklist:**
+
+- Retry temporary detection failure within one configured budget.
+- On a missed grasp reported in world state, retreat, redetect, synchronize, and
+  retry Pick once.
+- On Place failure reported in attached state, try another unused matching slot.
+- If matching placement remains unavailable, command Place to the configured
+  safe-drop pose and return partial failure.
+- Attempt Home after exhausted recovery only when no attachment remains or safe drop
+  succeeded.
+- Treat invalid input, controller unavailability, scene-invariant failure, and
+  unknown object state as terminal.
+- Cancel the active child when the tree is halted or the executive shuts down and
+  base cleanup on the child's truthful terminal state.
+- Preserve the first causal failure through cleanup and never report a recovered
+  partial task as success.
+- Test every branch with fakes before controlled simulation faults.
+
+**Failure symptoms:** Every failure is retried, retry counts are unbounded, Pick is
+retried while an object is attached, Home is commanded while holding an unknown
+object, safe drop is reported as sorting success, or cleanup overwrites the causal
+error.
+
+**Verification:** Fake tests prove every allowed transition and reject every illegal
+one. Controlled runtime evidence demonstrates a temporary detection failure, missed
+grasp/redetection, blocked primary slot/alternate placement, safe drop, and
+tree halt without relying on naturally intermittent simulation.
+
+**Stop gate:** The autonomous cycle recovers from each declared recoverable failure,
+stops truthfully on every terminal failure, and leaves a complete, inspectable final
+report and scene state.
+
+## Step 15 — deployment image and one-command demonstration
+
+**Status:** Future; begin after the application launch and recovery contracts are
+stable.
+
+**Purpose:** Turn a clean checkout into the final recruiter-facing sorting
+demonstration without development-container tooling or manual terminal choreography.
+
+**Files:** A runtime Dockerfile, Compose demo/headless profiles, the application
+bringup launch, runtime entrypoint, and
+[deployment experience](deployment-experience.md).
+
+**Learn:** Multi-stage runtime images, Compose profiles, GUI forwarding, explicit
+readiness, process supervision, bounded headless smoke, clean shutdown, and
+runtime-only dependency selection.
+
+**Work checklist:**
+
+- Build the workspace in a builder stage and copy only runtime artifacts and required
+  ROS/Gazebo assets into the final image.
+- Exclude compilers, editor/agent tools, source bind mounts, development volumes, and
+  test-only dependencies from the runtime service.
+- Provide one documented Compose demo command that launches Gazebo, RViz, MoveIt,
+  controllers, perception, skills, and the executive.
+- Provide a bounded headless profile for scheduled smoke evidence.
+- Gate the single automatic cycle on explicit readiness rather than startup sleeps.
+- Keep the GUI alive after completion so the sorted scene, Home pose, planning
+  scene, tree status, and final report remain inspectable.
+- Provide a controlled recovery scenario that visibly exercises redetection or
+  alternate-slot placement without depending on random failure.
+- Document supported host display/GPU requirements and a CPU-compatible path where
+  practical.
+
+**Failure symptoms:** The runtime service still sleeps forever awaiting `docker
+exec`, source code must be bind-mounted, startup order is guessed with timers, a
+successful cycle immediately destroys the final scene, the demo silently restarts,
+or the image contains the development toolchain and agent configuration.
+
+**Verification:** From a clean checkout, the documented demo command builds and
+starts the application, the normal cycle sorts all objects and remains inspectable,
+the controlled recovery scenario reaches its documented result, and the headless
+profile exits within its timeout with collected logs.
+
+**Stop gate:** A new user can reproduce the complete visual sorting demonstration
+from the documented prerequisites and one Compose command, while CI can exercise the
+same application headlessly.
+
 ## Gate summary
 
 | After step | Evidence required before advancing |
@@ -612,3 +706,5 @@ architecture.
 | 9–11 | Stable interfaces, deterministic sequences, and independent actions |
 | 12 | Complete fixed-source sorting cycle |
 | 13 | Contract-compatible real perception |
+| 14 | Bounded recovery and truthful final-state reporting |
+| 15 | Runtime-only image and reproducible one-command demonstration |

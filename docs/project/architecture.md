@@ -4,14 +4,13 @@ This document defines the target architecture and ownership boundaries. The
 [implementation roadmap](../plan/roadmap.md) controls when each component is
 introduced and records the current project stage.
 
-## Finished pre-perception data flow
+## Target application data flow
 
 ```text
-fixed YAML object source
-        │
-        │ DetectObjects
+Docker Compose / application bringup
+        │ one automatic cycle after readiness
         ▼
-BehaviorTree executive
+BehaviorTree executive ◄──── DetectObjects ──── fixed YAML or wrist perception
         │
         │ SyncObjects / Pick / Place / Home
         ▼
@@ -49,7 +48,7 @@ redefine them.
 - planning-scene world/attachment transitions;
 - gripper commands and grasp-result interpretation;
 - deterministic Pick, Place, and Home sequences; and
-- one exclusive action server.
+- one exclusive skill-server node exposing the three manipulation actions.
 
 It will not choose object order or label-to-slot policy.
 
@@ -57,15 +56,17 @@ It will not choose object order or label-to-slot policy.
 
 `sorting_arm_interfaces` will be created only after the reusable skills gate. It will
 contain stable data types and long-running action contracts without depending on
-skill implementation. This avoids inventing an external API before the internal
-behavior is proven.
+skill implementation. Pick, Place, and Home cross the executive-to-skills boundary.
+This avoids inventing an external API before the internal behavior is proven.
 
 ### Task policy
 
-`sorting_arm_executive` will request an object snapshot, synchronize it with MoveIt,
-allocate a destination slot, and call Pick, Place, and Home in order. It will stop on
-the first typed failure in the first milestone. Motion planning, gripper mechanics,
-and attachment details do not belong here.
+`sorting_arm_executive` will start exactly one cycle after controllers, MoveIt, the
+skill server, and the selected object provider report ready. It will request an
+object snapshot, synchronize it with MoveIt, allocate destination slots, and call
+Pick, Place, and Home in order. It will stop on the first typed failure in the first
+milestone. Motion planning, gripper mechanics, and attachment details do not belong
+here.
 
 BehaviorTree.CPP is used at this layer because later recovery policy must be visible,
 composable, and independently testable through sequences, fallbacks, conditions,
@@ -85,6 +86,35 @@ calibration assumptions, timestamp validation, transforms into `world`, and stab
 object identity. Reference perception logic may accelerate implementation, but its
 frames, intrinsics, object model, and error behavior must be verified against this
 cell before adoption.
+
+## Recovery contract
+
+Recovery is explicit task policy, not an automatic property of BehaviorTree.CPP or
+ROS actions. The baseline tree first proves fail-fast sorting. The recovery milestone
+then adds only these bounded branches:
+
+- retry a temporary `DetectObjects` failure within a configured budget;
+- after a missed grasp with the object still in the world, retreat, obtain a fresh
+  snapshot, synchronize the scene, and retry Pick once;
+- when Place fails and the object remains attached, try another unused slot for the
+  same opaque label, then a configured safe-drop pose;
+- after recovery leaves no attached object, make one best-effort Home request before
+  returning the original failure; and
+- stop immediately on invalid input, controller unavailability, violated scene
+  invariants, or any failure whose reported object state is unknown.
+
+Recovery decisions use the typed category, failed phase, and final object state from
+the child action. No retry may be selected from message text alone. Exhausting a
+retry, using the safe-drop pose, or leaving any object unsorted returns a partial
+failure; recovery must never relabel an incomplete job as success.
+
+The tree organizes these branches through Sequence, Fallback, condition, and bounded
+retry nodes. It does not erase physical state: world, attached, placed, safe-dropped,
+and unknown remain explicit states that determine which branch is legal.
+
+Every recovery branch requires deterministic fake-based evidence and one controlled
+runtime fault where practical. A tuned scene that never fails naturally is not
+evidence that recovery works.
 
 ## Frame and pose contract
 
@@ -155,6 +185,11 @@ Cancellation is observed between truthful physical segments. The design will not
 claim that an already-running controller command was preempted until its result
 actually returns.
 
+Only one BehaviorTree cycle runs per simulator reset. Its asynchronous leaves are the
+clients of Pick, Place, and Home. Halting the tree or shutting down the executive
+requests cancellation of the active child goal and waits for its truthful terminal
+result before choosing cleanup.
+
 ## Error propagation
 
 Each layer adds context without destroying lower-level evidence:
@@ -166,7 +201,9 @@ internal typed skill result
         ↓
 Pick / Place / Home action result
         ↓
-executive failure and stopped tree
+BehaviorTree recovery decision
+        ↓
+executive completion report and final scene state
 ```
 
 At minimum, failures distinguish invalid input, planning failure, execution failure,

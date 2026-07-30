@@ -10,7 +10,9 @@ skills, task orchestration, failure handling, and wrist-camera perception.
 The robot description, MoveIt configuration, controllers, Gazebo world, unified
 bringup, and development container are established. The manipulation skills layer
 is currently experimental; reusable Pick, Place, and Home actions, the executive,
-CI, and perception remain under implementation.
+and perception remain under implementation. A dedicated containerized CI foundation
+now performs clean dependency, configuration, build, and test checks; remote evidence
+is pending the first pushed workflow run.
 
 ## Development environment
 

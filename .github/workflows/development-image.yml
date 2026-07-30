@@ -1,0 +1,107 @@
+name: Development image
+
+on:
+  push:
+    paths:
+      - .devcontainer/**
+      - .docker/Dockerfile
+      - .docker/bashrc.sh
+      - .docker/ci.sh
+      - .docker/entrypoint.sh
+      - .docker/packages/**
+      - .docker/underlay.repos
+      - .dockerignore
+      - .github/workflows/development-image.yml
+      - docker-compose.yaml
+      - src/**/package.xml
+  pull_request:
+    paths:
+      - .devcontainer/**
+      - .docker/Dockerfile
+      - .docker/bashrc.sh
+      - .docker/ci.sh
+      - .docker/entrypoint.sh
+      - .docker/packages/**
+      - .docker/underlay.repos
+      - .dockerignore
+      - .github/workflows/development-image.yml
+      - docker-compose.yaml
+      - src/**/package.xml
+  workflow_dispatch:
+    inputs:
+      clean_image:
+        description: Build the development image without using cached layers
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  development:
+    name: Resolve + build + verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Resolve the development container
+        run: >-
+          npx --yes @devcontainers/cli@0.88.0
+          read-configuration
+          --workspace-folder "${GITHUB_WORKSPACE}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build the development image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .docker/Dockerfile
+          build-args: |
+            USERNAME=kratos
+            USER_UID=1000
+            USER_GID=1000
+            TOOLS_REFRESH=0
+          load: true
+          tags: sorting_arm_development:${{ github.sha }}
+          cache-from: type=gha,scope=sorting-arm-development
+          cache-to: type=gha,mode=max,scope=sorting-arm-development,ignore-error=true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
+          push: false
+
+      - name: Verify the default user
+        run: |
+          actual_user="$(
+            docker run --rm "sorting_arm_development:${GITHUB_SHA}" id -un
+          )"
+          test "${actual_user}" = "kratos"
+
+      - name: Verify the ROS and BehaviorTree underlays
+        run: |
+          docker run --rm "sorting_arm_development:${GITHUB_SHA}" bash -c '
+            set -e
+            test "${ROS_DISTRO}" = "jazzy"
+            test "$(ros2 pkg prefix behaviortree_ros2)" = "/opt/underlay/install"
+            test "$(ros2 pkg prefix btcpp_ros2_interfaces)" = "/opt/underlay/install"
+          '
+
+      - name: Verify all manifest dependencies
+        run: >-
+          docker run --rm
+          --volume "${GITHUB_WORKSPACE}:/workspace:ro"
+          "sorting_arm_development:${GITHUB_SHA}"
+          rosdep check --from-paths /workspace/src --ignore-src
+
+      - name: Verify the clean workspace
+        run: >-
+          docker run --rm
+          --volume "${GITHUB_WORKSPACE}:/workspace:ro"
+          "sorting_arm_development:${GITHUB_SHA}"
+          /workspace/.docker/ci.sh /workspace

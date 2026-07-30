@@ -3,8 +3,10 @@
 
 *
 !.docker/entrypoint.sh
+!.docker/ci.sh
 !.docker/packages/base.txt
+!.docker/packages/ci-ros.txt
+!.docker/packages/ci.txt
 !.docker/packages/ros.txt
 !.docker/packages/extra.txt
 !.docker/underlay.repos
-

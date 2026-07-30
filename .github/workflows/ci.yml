@@ -1,0 +1,48 @@
+name: Continuous integration
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      clean_image:
+        description: Build the CI image without using cached layers
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    name: CI image + workspace
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build the CI image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .docker/Dockerfile.ci
+          load: true
+          tags: sorting_arm_ci:${{ github.sha }}
+          cache-from: type=gha,scope=sorting-arm-ci
+          cache-to: type=gha,mode=max,scope=sorting-arm-ci,ignore-error=true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
+          push: false
+
+      - name: Build and test the clean workspace
+        run: >-
+          docker run --rm
+          --volume "${GITHUB_WORKSPACE}:/workspace:ro"
+          "sorting_arm_ci:${GITHUB_SHA}"
