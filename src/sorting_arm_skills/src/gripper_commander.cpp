@@ -4,6 +4,7 @@
 #include <cmath>
 #include <future>
 #include <stdexcept>
+#include <string>
 
 #include "rclcpp_action/create_client.hpp"
 
@@ -18,7 +19,6 @@ GripperCommander::GripperCommander(std::shared_ptr<rclcpp::Node> node) {
   max_effort_ = node_->declare_parameter<double>("gripper.max_effort", 40.0);
   goal_timeout_s_ = node_->declare_parameter<double>("gripper.goal_timeout_s", 5.0);
   result_timeout_s_ = node_->declare_parameter<double>("gripper.result_timeout_s", 10.0);
-  close_target_tolerance_ = node_->declare_parameter<double>("gripper.close_target_tolerance", 0.01);
 
   if (close_position_ == open_position_) {
     throw std::runtime_error("gripper.close_position must differ from gripper.open_position");
@@ -30,8 +30,8 @@ GripperCommander::GripperCommander(std::shared_ptr<rclcpp::Node> node) {
   client_ = rclcpp_action::create_client<GripperCommandAction>(node_, action_name_);
 }
 
-SkillResult GripperCommander::send_and_wait(double position, const std::string& phase,
-                                            GripperCommandAction::Result& result) {
+SkillResult GripperCommander::send_goal(double position, const std::string& phase,
+                                        GripperCommandAction::Result& result) {
   const auto goal_timeout = std::chrono::duration<double>(goal_timeout_s_);
   const auto result_timeout = std::chrono::duration<double>(result_timeout_s_);
 
@@ -55,6 +55,8 @@ SkillResult GripperCommander::send_and_wait(double position, const std::string& 
 
   auto result_future = client_->async_get_result(goal_handle);
   if (result_future.wait_for(result_timeout) != std::future_status::ready) {
+    // give up on our end, but the controller keeps driving the joint unless we say otherwise
+    client_->async_cancel_goal(goal_handle);
     return skill_error(phase, "gripper result timed out");
   }
   const auto wrapped = result_future.get();
@@ -68,31 +70,21 @@ SkillResult GripperCommander::send_and_wait(double position, const std::string& 
 
 SkillResult GripperCommander::open() {
   GripperCommandAction::Result result;
-  return send_and_wait(open_position_, "open_gripper", result);
+  return send_goal(open_position_, "open_gripper", result);
 }
 
 GraspOutcome GripperCommander::close() {
   GripperCommandAction::Result result;
-  const auto send_result = send_and_wait(close_position_, "close_gripper", result);
-  if (!send_result.ok) {
-    return GraspOutcome{false, false, send_result.native_code, send_result.message};
+  const auto sent = send_goal(close_position_, "close_gripper", result);
+  if (!sent.ok) {
+    return GraspOutcome{false, false, sent.native_code, sent.message};
   }
-
-  // stalled is the sole authority for contact; reached_goal only refines the
-  // detail string, never overrides it.
-  const bool at_closed_target = std::abs(result.position - close_position_) <= close_target_tolerance_;
-  const bool object_present = result.stalled;
-
-  std::string detail;
-  if (object_present) {
-    detail = "stalled=true: contact detected before the closed target";
-  } else if (result.reached_goal && at_closed_target) {
-    detail = "reached_goal at the closed target: no object captured";
-  } else {
-    detail = "neither stalled nor a clean reached_goal at target: treated as no object";
+  // allow_stalling lets a real jam come back SUCCEEDED with stalled==true
+  // instead of ABORTED, so this is the controller's own verdict, not ours
+  if (result.stalled) {
+    return GraspOutcome{true, true, 0, "stalled at position " + std::to_string(result.position)};
   }
-
-  return GraspOutcome{true, object_present, 0, detail};
+  return GraspOutcome{true, false, 0, "reached close_position uncontested: no object captured"};
 }
 
 }  // namespace sorting_arm

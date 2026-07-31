@@ -1,11 +1,16 @@
 #include "sorting_arm_skills/scene_manager.hpp"
 
+#include <chrono>
 #include <cstddef>
+#include <future>
 #include <optional>
 #include <stdexcept>
 
+#include "moveit/collision_detection/collision_matrix.hpp"
 #include "moveit/planning_scene_interface/planning_scene_interface.hpp"
 #include "moveit_msgs/msg/attached_collision_object.hpp"
+#include "moveit_msgs/msg/planning_scene.hpp"
+#include "moveit_msgs/msg/planning_scene_components.hpp"
 #include "shape_msgs/msg/solid_primitive.hpp"
 #include "sorting_arm_skills/helpers.hpp"
 
@@ -56,8 +61,12 @@ SceneManager::SceneManager(std::shared_ptr<rclcpp::Node> node, const std::string
   tcp_link_ = tcp_link;
 
   touch_links_ = node_->declare_parameter<std::vector<std::string>>("scene.touch_links", std::vector<std::string>{});
+  service_timeout_s_ = node_->declare_parameter<double>("scene.service_timeout_s", 5.0);
   if (touch_links_.empty()) {
     throw std::runtime_error("scene.touch_links must list at least one gripper touch link");
+  }
+  if (service_timeout_s_ <= 0.0) {
+    throw std::runtime_error("scene.service_timeout_s must be positive");
   }
 
   static_objects_.push_back(load_box_set(*node_, "scene.table", planning_frame_));
@@ -65,6 +74,98 @@ SceneManager::SceneManager(std::shared_ptr<rclcpp::Node> node, const std::string
   static_objects_.push_back(load_box_set(*node_, "scene.blue_tray", planning_frame_));
 
   scene_interface_ = std::make_shared<moveit::planning_interface::PlanningSceneInterface>();
+  get_scene_client_ = node_->create_client<moveit_msgs::srv::GetPlanningScene>("get_planning_scene");
+}
+
+SkillResult SceneManager::query_allowed_collision_matrix(moveit_msgs::msg::AllowedCollisionMatrix& matrix) {
+  const auto timeout = std::chrono::duration<double>(service_timeout_s_);
+  if (!get_scene_client_->wait_for_service(timeout)) {
+    return skill_error("grasp_contacts", "get_planning_scene service unavailable");
+  }
+
+  auto request = std::make_shared<moveit_msgs::srv::GetPlanningScene::Request>();
+  request->components.components = moveit_msgs::msg::PlanningSceneComponents::ALLOWED_COLLISION_MATRIX;
+  auto future = get_scene_client_->async_send_request(request);
+  if (future.wait_for(timeout) != std::future_status::ready) {
+    return skill_error("grasp_contacts", "get_planning_scene response timed out");
+  }
+
+  matrix = future.get()->scene.allowed_collision_matrix;
+  return skill_ok("grasp_contacts");
+}
+
+SkillResult SceneManager::apply_and_verify_allowed_collision_matrix(
+    const moveit_msgs::msg::AllowedCollisionMatrix& matrix, const std::string& operation) {
+  moveit_msgs::msg::PlanningScene scene;
+  scene.is_diff = true;
+  scene.allowed_collision_matrix = matrix;
+  if (!scene_interface_->applyPlanningScene(scene)) {
+    return skill_error("grasp_contacts", operation + ": applyPlanningScene failed");
+  }
+
+  moveit_msgs::msg::AllowedCollisionMatrix observed;
+  const auto query_result = query_allowed_collision_matrix(observed);
+  if (!query_result.ok) {
+    return skill_error("grasp_contacts", operation + ": " + query_result.message, query_result.native_code);
+  }
+  if (observed != matrix) {
+    return skill_error("grasp_contacts", operation + ": allowed collision matrix verification failed");
+  }
+  return skill_ok("grasp_contacts");
+}
+
+SkillResult SceneManager::begin_grasp_contacts(const std::string& object_id) {
+  if (grasp_contacts_baseline_ || grasp_contacts_object_id_) {
+    return skill_error("grasp_contacts", "a grasp-contact allowance is already active");
+  }
+  if (known_dynamic_objects_.find(object_id) == known_dynamic_objects_.end()) {
+    return skill_error("grasp_contacts", "object '" + object_id + "' was never synced into the scene");
+  }
+  if (scene_interface_->getObjects({object_id}).count(object_id) != 1 ||
+      scene_interface_->getAttachedObjects({object_id}).count(object_id) != 0) {
+    return skill_error("grasp_contacts", "object '" + object_id + "' is not world-present/attached-absent");
+  }
+
+  moveit_msgs::msg::AllowedCollisionMatrix baseline;
+  const auto query_result = query_allowed_collision_matrix(baseline);
+  if (!query_result.ok) {
+    return query_result;
+  }
+
+  collision_detection::AllowedCollisionMatrix modified(baseline);
+  modified.setEntry(object_id, touch_links_, true);
+  moveit_msgs::msg::AllowedCollisionMatrix modified_msg;
+  modified.getMessage(modified_msg);
+
+  const auto apply_result = apply_and_verify_allowed_collision_matrix(modified_msg, "enable grasp contacts");
+  if (!apply_result.ok) {
+    const auto restore_result = apply_and_verify_allowed_collision_matrix(baseline, "rollback grasp contacts");
+    if (!restore_result.ok) {
+      return skill_error("grasp_contacts", apply_result.message + "; rollback failed: " + restore_result.message,
+                         restore_result.native_code);
+    }
+    return apply_result;
+  }
+
+  grasp_contacts_baseline_ = std::move(baseline);
+  grasp_contacts_object_id_ = object_id;
+  return skill_ok("grasp_contacts");
+}
+
+SkillResult SceneManager::end_grasp_contacts() {
+  if (!grasp_contacts_baseline_ || !grasp_contacts_object_id_) {
+    return skill_error("grasp_contacts", "no grasp-contact allowance is active");
+  }
+
+  const auto restore_result =
+      apply_and_verify_allowed_collision_matrix(*grasp_contacts_baseline_, "restore grasp contacts");
+  if (!restore_result.ok) {
+    return restore_result;
+  }
+
+  grasp_contacts_baseline_.reset();
+  grasp_contacts_object_id_.reset();
+  return skill_ok("grasp_contacts");
 }
 
 SkillResult SceneManager::apply_static_scene() {

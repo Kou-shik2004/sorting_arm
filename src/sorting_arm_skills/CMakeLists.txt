@@ -21,6 +21,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
+find_package(moveit_core REQUIRED)
 find_package(shape_msgs REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(sorting_arm_interfaces REQUIRED)
@@ -55,6 +56,7 @@ ament_target_dependencies(sorting_arm_skills PUBLIC
   sorting_arm_interfaces
 )
 target_link_libraries(sorting_arm_skills PUBLIC
+  moveit_core::moveit_collision_detection
   moveit_ros_planning_interface::moveit_move_group_interface
   moveit_ros_planning_interface::moveit_planning_scene_interface
   moveit_ros_planning_interface::moveit_common_planning_interface_objects

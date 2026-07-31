@@ -142,24 +142,6 @@
                 <geometry>
                     <mesh filename="file://$(find sorting_arm_description)/meshes/robotiq_2f_85/collision/2f_85/left_finger_tip.stl" />
                 </geometry>
-                <surface>
-                    <friction>
-                    <ode>
-                        <mu1>100000.0</mu1>
-                        <mu2>100000.0</mu2>
-                    </ode>
-                    </friction>
-                    <contact>
-                    <ode>
-                        <kp>1e+5</kp>
-                        <kd>1</kd>
-                        <soft_cfm>0</soft_cfm>
-                        <soft_erp>0.2</soft_erp>
-                        <minDepth>0.002</minDepth>
-                        <maxVel>0</maxVel>
-                    </ode>
-                    </contact>
-                </surface>
             </collision>
             <inertial>
                 <origin xyz="-0.01456706 -0.0008 0.01649701" rpy="0 0 0" />
@@ -178,24 +160,6 @@
                 <geometry>
                     <mesh filename="file://$(find sorting_arm_description)/meshes/robotiq_2f_85/collision/2f_85/right_finger_tip.stl" />
                 </geometry>
-                <surface>
-                    <friction>
-                    <ode>
-                        <mu1>100000.0</mu1>
-                        <mu2>100000.0</mu2>
-                    </ode>
-                    </friction>
-                    <contact>
-                    <ode>
-                        <kp>1e+5</kp>
-                        <kd>1</kd>
-                        <soft_cfm>0</soft_cfm>
-                        <soft_erp>0.2</soft_erp>
-                        <minDepth>0.002</minDepth>
-                        <maxVel>0</maxVel>
-                    </ode>
-                    </contact>
-                </surface>
             </collision>
             <inertial>
                 <origin xyz="0.01456706 5e-05 0.01649701" rpy="0 0 0" />
@@ -274,5 +238,16 @@
             <mimic joint="${prefix}robotiq_85_left_knuckle_joint" />
             <limit lower="0.0" upper="0.8" velocity="0.5" effort="50" />
         </joint>
+
+        <!-- sdformat only reads friction from a gazebo reference block, the surface
+             block inside collision never reached the sdf so the pads ran at mu=1 -->
+        <gazebo reference="${prefix}robotiq_85_left_finger_tip_link">
+            <mu1>100000.0</mu1>
+            <mu2>100000.0</mu2>
+        </gazebo>
+        <gazebo reference="${prefix}robotiq_85_right_finger_tip_link">
+            <mu1>100000.0</mu1>
+            <mu2>100000.0</mu2>
+        </gazebo>
     </xacro:macro>
 </robot>

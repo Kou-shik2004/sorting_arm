@@ -31,11 +31,9 @@ class GripperCommander {
  private:
   using GripperCommandAction = control_msgs::action::GripperCommand;
 
-  // Sends one goal (open or close target) and blocks the calling thread until
-  // a terminal result or a configured timeout elapses. `result` is only valid
-  // when the returned SkillResult is ok. `phase` names the failure if it
-  // doesn't — "open_gripper" or "close_gripper", not always the latter.
-  SkillResult send_and_wait(double position, const std::string& phase, GripperCommandAction::Result& result);
+  // Sends one goal and blocks up to result_timeout_s_ for a terminal result.
+  // Cancels the goal itself on any timeout — nothing is left driving the joint.
+  SkillResult send_goal(double position, const std::string& phase, GripperCommandAction::Result& result);
 
   std::shared_ptr<rclcpp::Node> node_;
   std::string action_name_;
@@ -44,7 +42,6 @@ class GripperCommander {
   double max_effort_ = 0.0;
   double goal_timeout_s_ = 0.0;
   double result_timeout_s_ = 0.0;
-  double close_target_tolerance_ = 0.0;
 
   rclcpp_action::Client<GripperCommandAction>::SharedPtr client_;
 };
