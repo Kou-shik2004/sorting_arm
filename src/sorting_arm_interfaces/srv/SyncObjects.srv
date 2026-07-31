@@ -1,0 +1,7 @@
+# Reconciles the planning scene with a detection snapshot. Served by
+# sorting_arm_skills, which owns the PlanningSceneInterface (see application
+# architecture §2 clarification).
+
+DetectedObject[] objects
+---
+SkillResult result

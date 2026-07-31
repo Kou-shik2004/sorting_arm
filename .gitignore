@@ -13,8 +13,11 @@ log/
 .*ignore
 !.gitignore
 
-context/
+ai/
 .vscode/browse.vc.db*
 tasks/
 CLAUDE.md
 AGENTS.md
+*.json
+.agents/
+.playwright-cli/

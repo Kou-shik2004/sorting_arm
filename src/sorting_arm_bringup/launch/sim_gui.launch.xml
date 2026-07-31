@@ -1,0 +1,41 @@
+<launch>
+
+    <append_env name="GZ_SIM_RESOURCE_PATH" value="$(find-pkg-share sorting_arm_description)/.."/>
+    <let name="urdf_file_path" value="$(find-pkg-share sorting_arm_description)/urdf/sorting_arm.sim.urdf.xacro"/>
+    <let name="controllers_file_path" value="$(find-pkg-share sorting_arm_bringup)/config/ros2_controllers.yaml"/>
+    <let name="gazebo_config_path" value="$(find-pkg-share sorting_arm_bringup)/config/gz_bridge.yaml"/>
+    <let name="world_file_path" value="$(find-pkg-share sorting_arm_bringup)/worlds/sorting_cell.sdf"/>
+
+    <node pkg="ros_gz_bridge" exec="parameter_bridge">
+        <param name="config_file" value="$(var gazebo_config_path)"/>
+    </node>
+
+    <set_parameter name="use_sim_time" value="true"/>
+
+    <node pkg="robot_state_publisher" exec="robot_state_publisher">
+        <param name="robot_description"
+               value="$(command 'xacro $(var urdf_file_path) controllers_file:=$(var controllers_file_path)')"
+               type="str"/>
+    </node>
+
+    <include file="$(find-pkg-share ros_gz_sim)/launch/gz_sim.launch.py">
+        <arg name="gz_args" value="$(var world_file_path) -r"/>
+        <arg name="on_exit_shutdown" value="true"/>
+    </include>
+
+    <node pkg="ros_gz_sim" exec="create"
+          args="-world sorting_cell -topic robot_description -name sorting_arm"/>
+
+    <node pkg="controller_manager" exec="spawner"
+          args="joint_state_broadcaster --controller-manager-timeout 60"/>
+    <node pkg="controller_manager" exec="spawner"
+          args="arm_controller --controller-manager-timeout 60"/>
+    <node pkg="controller_manager" exec="spawner"
+          args="gripper_controller --controller-manager-timeout 60"/>
+
+    <!-- Main moveit python launch file -->
+    <include file="$(find-pkg-share sorting_arm_moveit)/launch/move_group.launch.py"/>
+
+    <include file="$(find-pkg-share sorting_arm_moveit)/launch/moveit_rviz.launch.py"/>
+
+</launch>

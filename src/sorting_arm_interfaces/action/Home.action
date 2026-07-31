@@ -1,0 +1,7 @@
+# Long-running, cancellable move to the measured SRDF `home` state. Goal is
+# normally empty.
+
+---
+SkillResult result
+---
+string phase

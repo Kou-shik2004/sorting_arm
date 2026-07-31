@@ -1,0 +1,98 @@
+#include "sorting_arm_skills/gripper_commander.hpp"
+
+#include <chrono>
+#include <cmath>
+#include <future>
+#include <stdexcept>
+
+#include "rclcpp_action/create_client.hpp"
+
+namespace sorting_arm {
+
+GripperCommander::GripperCommander(std::shared_ptr<rclcpp::Node> node) {
+  node_ = node;
+
+  action_name_ = node_->declare_parameter<std::string>("gripper.action_name", "/gripper_controller/gripper_cmd");
+  open_position_ = node_->declare_parameter<double>("gripper.open_position", 0.0);
+  close_position_ = node_->declare_parameter<double>("gripper.close_position", 0.8);
+  max_effort_ = node_->declare_parameter<double>("gripper.max_effort", 40.0);
+  goal_timeout_s_ = node_->declare_parameter<double>("gripper.goal_timeout_s", 5.0);
+  result_timeout_s_ = node_->declare_parameter<double>("gripper.result_timeout_s", 10.0);
+  close_target_tolerance_ = node_->declare_parameter<double>("gripper.close_target_tolerance", 0.01);
+
+  if (close_position_ == open_position_) {
+    throw std::runtime_error("gripper.close_position must differ from gripper.open_position");
+  }
+  if (max_effort_ <= 0.0) {
+    throw std::runtime_error("gripper.max_effort must be positive");
+  }
+
+  client_ = rclcpp_action::create_client<GripperCommandAction>(node_, action_name_);
+}
+
+SkillResult GripperCommander::send_and_wait(double position, const std::string& phase,
+                                            GripperCommandAction::Result& result) {
+  const auto goal_timeout = std::chrono::duration<double>(goal_timeout_s_);
+  const auto result_timeout = std::chrono::duration<double>(result_timeout_s_);
+
+  if (!client_->wait_for_action_server(goal_timeout)) {
+    return skill_error(phase, "gripper action server '" + action_name_ + "' unavailable");
+  }
+
+  GripperCommandAction::Goal goal;
+  goal.command.position = position;
+  goal.command.max_effort = max_effort_;
+
+  auto goal_handle_future = client_->async_send_goal(goal);
+
+  if (goal_handle_future.wait_for(goal_timeout) != std::future_status::ready) {
+    return skill_error(phase, "gripper goal response timed out");
+  }
+  const auto goal_handle = goal_handle_future.get();
+  if (!goal_handle) {
+    return skill_error(phase, "gripper goal was rejected");
+  }
+
+  auto result_future = client_->async_get_result(goal_handle);
+  if (result_future.wait_for(result_timeout) != std::future_status::ready) {
+    return skill_error(phase, "gripper result timed out");
+  }
+  const auto wrapped = result_future.get();
+  if (wrapped.code != rclcpp_action::ResultCode::SUCCEEDED) {
+    return skill_error(phase, "gripper goal did not succeed (aborted or canceled)", static_cast<int>(wrapped.code));
+  }
+
+  result = *wrapped.result;
+  return skill_ok();
+}
+
+SkillResult GripperCommander::open() {
+  GripperCommandAction::Result result;
+  return send_and_wait(open_position_, "open_gripper", result);
+}
+
+GraspOutcome GripperCommander::close() {
+  GripperCommandAction::Result result;
+  const auto send_result = send_and_wait(close_position_, "close_gripper", result);
+  if (!send_result.ok) {
+    return GraspOutcome{false, false, send_result.native_code, send_result.message};
+  }
+
+  // stalled is the sole authority for contact; reached_goal only refines the
+  // detail string, never overrides it.
+  const bool at_closed_target = std::abs(result.position - close_position_) <= close_target_tolerance_;
+  const bool object_present = result.stalled;
+
+  std::string detail;
+  if (object_present) {
+    detail = "stalled=true: contact detected before the closed target";
+  } else if (result.reached_goal && at_closed_target) {
+    detail = "reached_goal at the closed target: no object captured";
+  } else {
+    detail = "neither stalled nor a clean reached_goal at target: treated as no object";
+  }
+
+  return GraspOutcome{true, object_present, 0, detail};
+}
+
+}  // namespace sorting_arm

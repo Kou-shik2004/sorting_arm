@@ -22,6 +22,15 @@
     <group_state name="gripper_close" group="gripper">
         <joint name="robotiq_85_left_knuckle_joint" value="0.8"/>
     </group_state>
+    <!-- jogged and measured on the pedestal-raised arm, Step 0, see roadmap.md -->
+    <group_state name="home" group="arm">
+        <joint name="shoulder_pan_joint" value="-0.017453"/>
+        <joint name="shoulder_lift_joint" value="-1.396263"/>
+        <joint name="elbow_joint" value="0.872665"/>
+        <joint name="wrist_1_joint" value="-2.635447"/>
+        <joint name="wrist_2_joint" value="-1.396263"/>
+        <joint name="wrist_3_joint" value="-0.017453"/>
+    </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="gripper" parent_link="tool0" group="gripper" parent_group="arm"/>
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
@@ -29,6 +38,9 @@
     <disable_collisions link1="forearm_link" link2="upper_arm_link" reason="Adjacent"/>
     <disable_collisions link1="forearm_link" link2="wrist_1_link" reason="Adjacent"/>
     <disable_collisions link1="forearm_link" link2="wrist_2_link" reason="Never"/>
+    <!-- pedestal is our own link now, base_link_inertia sits right on top of it -->
+    <disable_collisions link1="pedestal" link2="base_link_inertia" reason="Adjacent"/>
+    <disable_collisions link1="pedestal" link2="shoulder_link" reason="Never"/>
     <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_finger_link" reason="Never"/>
     <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_finger_tip_link" reason="Never"/>
     <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_inner_knuckle_link" reason="Adjacent"/>

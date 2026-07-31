@@ -6,10 +6,7 @@
         "limitSymbolsToIncludedHeaders": true
       },
       "includePath": [
-        "${workspaceFolder}/**",
-        "/opt/ros/jazzy/include/**",
-        "/opt/underlay/install/include/**",
-        "/usr/include/**"
+        "${workspaceFolder}/**"
       ],
       "name": "ros2",
       "intelliSenseMode": "linux-gcc-x64",

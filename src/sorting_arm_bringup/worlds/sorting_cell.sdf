@@ -146,7 +146,7 @@
 
     <model name="red_box_1">
       <static>false</static>
-      <pose>0.36 0.10 0.520 0 0 0</pose>
+      <pose>0.40 0.12 0.520 0 0 0</pose>
       <link name="box_link">
         <inertial>
           <mass>0.05</mass>
@@ -183,7 +183,7 @@
 
     <model name="blue_box_1">
       <static>false</static>
-      <pose>0.36 -0.10 0.520 0 0 0</pose>
+      <pose>0.40 -0.12 0.520 0 0 0</pose>
       <link name="box_link">
         <inertial>
           <mass>0.05</mass>
@@ -220,7 +220,7 @@
 
     <model name="blue_box_2">
       <static>false</static>
-      <pose>0.50 0.10 0.520 0 0 0</pose>
+      <pose>0.52 0.12 0.520 0 0 0</pose>
       <link name="box_link">
         <inertial>
           <mass>0.05</mass>
@@ -257,7 +257,7 @@
 
     <model name="red_box_2">
       <static>false</static>
-      <pose>0.50 -0.10 0.520 0 0 0</pose>
+      <pose>0.52 -0.12 0.520 0 0 0</pose>
       <link name="box_link">
         <inertial>
           <mass>0.05</mass>
@@ -294,7 +294,7 @@
 
     <model name="red_tray">
       <static>true</static>
-      <pose>0.40 0.34 0.500 0 0 0</pose>
+      <pose>0.58 0.35 0.500 0 0 0</pose>
       <link name="tray_link">
         <collision name="floor_collision">
           <pose>0 0 0.0025 0 0 0</pose>
@@ -385,7 +385,7 @@
 
     <model name="blue_tray">
       <static>true</static>
-      <pose>0.40 -0.34 0.500 0 0 0</pose>
+      <pose>0.58 -0.35 0.500 0 0 0</pose>
       <link name="tray_link">
         <collision name="floor_collision">
           <pose>0 0 0.0025 0 0 0</pose>
