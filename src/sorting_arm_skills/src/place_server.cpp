@@ -19,7 +19,7 @@ PlaceServerNode::PlaceServerNode(std::shared_ptr<rclcpp::Node> node, std::shared
   // returns the existing value instead of throwing a second declare.
   approach_height_m_ = declare_or_get<double>(*node_, "targets.approach_height_m", 0.12);
   retreat_height_m_ = declare_or_get<double>(*node_, "targets.retreat_height_m", 0.12);
-  grasp_offset_m_ = declare_or_get<double>(*node_, "targets.grasp_offset_m", -0.02);
+  grasp_offset_m_ = declare_or_get<double>(*node_, "targets.grasp_offset_m", -0.036);
 
   if (approach_height_m_ <= 0.0) {
     throw std::runtime_error("targets.approach_height_m must be positive");

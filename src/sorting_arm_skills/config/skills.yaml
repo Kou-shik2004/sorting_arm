@@ -18,6 +18,9 @@
       # rather than asserting an id this repository has never verified.
       planning_pipeline: ""
       planner_id: ""
+      # we use move_group's canonical joint limits when retiming Cartesian paths
+      parameter_source_node: "/move_group"
+      parameter_service_timeout_s: 5.0
       planning_time_s: 5.0
       planning_attempts: 5
       velocity_scaling: 0.15
@@ -29,6 +32,7 @@
       max_segment_duration_s: 15.0
 
     scene:
+      service_timeout_s: 5.0
       # Table top + 4 legs, absolute world-frame centres/dimensions from
       # sorting_cell.sdf's "table" model (model pose 0.35 0 0.505).
       table:
@@ -70,19 +74,30 @@
 
     gripper:
       action_name: "/gripper_controller/gripper_cmd"
-      # 0.0 / 0.8 match the SRDF's gripper_open/gripper_close group states for
-      # robotiq_85_left_knuckle_joint — a revolute joint, so these and
-      # close_target_tolerance are radians, not metres.
+      # 0.0 matches the SRDF's gripper_open group state for
+      # robotiq_85_left_knuckle_joint — a revolute joint, so this is radians.
       open_position: 0.0
-      close_position: 0.8
-      # Provisional (architecture "Known blockers" #2): re-tune every value in
-      # this block from Step 0's measured GripperCommand results, not a guess.
+      # close target is derived per object: knuckle angle for (width - squeeze_depth_m),
+      # never the 0.8 hard stop — that left the position error permanently saturated
+      # and asking gz_ros2_control for 7x the joint's rated velocity, forever.
+      # window is 1.1mm (controller goal_tolerance) to 5.5mm (joint velocity rating
+      # at position_proportional_gain=0.1, update_rate=100); this is the middle of it.
+      squeeze_depth_m: 0.003
+      # measured jaw gap must land this close to the object width, and both
+      # fingertips must agree this closely, or nothing was captured — see
+      # docs/rca/gripper-grasp-instability.md Iteration 12 for the error budget.
+      capture_tolerance_m: 0.005
+      symmetry_tolerance_rad: 0.005
+      # inert: GripperActionController on a position-only interface drops
+      # max_effort on the floor, kept only because the goal msg wants it.
       max_effort: 40.0
       goal_timeout_s: 5.0
       result_timeout_s: 10.0
-      close_target_tolerance: 0.01
 
     targets:
+      # we bound IK-branch search, and every candidate must support the full
+      # collision-checked descent before pre-grasp executes
+      max_pre_grasp_candidates: 5
       # Matches the "home" arm group_state in sorting_arm.srdf, jogged and
       # measured on the pedestal-raised arm at Step 0.
       home_named_target: "home"
@@ -91,6 +106,6 @@
       approach_height_m: 0.12
       retreat_height_m: 0.12
       # tcp height at grasp/place = object_centre_z + half_height_m + this.
-      # -0.02 on a 0.04 m cube (half_height 0.02) grips at the vertical
-      # centre; re-derive if the object catalog's height changes.
-      grasp_offset_m: -0.02
+      # the pads sit almost entirely above tcp, so -0.036 is what puts the pad
+      # face on the whole 0.04 m cube instead of pinching its top edge.
+      grasp_offset_m: -0.036

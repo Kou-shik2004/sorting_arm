@@ -105,4 +105,31 @@ bool accept_segment_duration(double duration_s, double max_duration_s) {
   return std::isfinite(duration_s) && duration_s > 0.0 && duration_s <= max_duration_s;
 }
 
+namespace {
+// left-knuckle link geometry from robotiq_2f_85_macro.urdf.xacro, endpoint-checked
+// against the spec in docs/rca/gripper-grasp-instability.md (gap(0)=85mm, gap(0.8)=0.15mm)
+constexpr double kJawA = 0.0371575;
+constexpr double kJawB = 0.04342168;
+constexpr double kJawC = 0.03060114 - 0.02526;
+}  // namespace
+
+double jaw_gap_m(double knuckle_rad) {
+  return 2.0 * (kJawC + kJawA * std::cos(knuckle_rad) - kJawB * std::sin(knuckle_rad));
+}
+
+std::optional<double> knuckle_angle_for_gap_m(double gap_m) {
+  // a*cos(th) - b*sin(th) = R*cos(th + phi), solved for th directly instead of searched
+  const double r = std::hypot(kJawA, kJawB);
+  const double phi = std::atan2(kJawB, kJawA);
+  const double cos_arg = (gap_m / 2.0 - kJawC) / r;
+  if (cos_arg < -1.0 || cos_arg > 1.0) {
+    return std::nullopt;
+  }
+  const double knuckle_rad = std::acos(cos_arg) - phi;
+  if (knuckle_rad < 0.0 || knuckle_rad > 0.8) {
+    return std::nullopt;
+  }
+  return knuckle_rad;
+}
+
 }  // namespace sorting_arm

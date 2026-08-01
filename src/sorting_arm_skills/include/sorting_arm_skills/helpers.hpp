@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -79,5 +80,12 @@ moveit_msgs::msg::CollisionObject make_compound_box_object(const std::string& id
 // though motion_commander.cpp is the only caller. -1.0 is computeCartesianPath's error sentinel.
 [[nodiscard]] bool accept_cartesian_fraction(double fraction, double min_fraction);
 [[nodiscard]] bool accept_segment_duration(double duration_s, double max_duration_s);
+
+// Robotiq 2f-85 jaw gap for a left-knuckle angle, closed form from the macro's
+// own link geometry: gap(0)=85mm, gap(0.8)=0.15mm — docs/rca/gripper-grasp-instability.md.
+[[nodiscard]] double jaw_gap_m(double knuckle_rad);
+
+// Exact inverse of jaw_gap_m. nullopt if gap_m has no knuckle angle in [0, 0.8] — never clamped.
+[[nodiscard]] std::optional<double> knuckle_angle_for_gap_m(double gap_m);
 
 }  // namespace sorting_arm

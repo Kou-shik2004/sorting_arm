@@ -12,8 +12,10 @@
   <depend>rclcpp_action</depend>
   <depend>geometry_msgs</depend>
   <depend>moveit_msgs</depend>
+  <depend>moveit_core</depend>
   <depend>shape_msgs</depend>
   <depend>control_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>sorting_arm_interfaces</depend>
   <depend>moveit_ros_planning_interface</depend>
 
