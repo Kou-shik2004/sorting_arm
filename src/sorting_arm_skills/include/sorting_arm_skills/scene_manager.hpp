@@ -45,11 +45,12 @@ class SceneManager {
   // synced geometry, then verifies world-present/attached-absent.
   SkillResult detach_and_place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& placed_centre);
 
-  // World-frame centre and half-height of a synced dynamic object, or
-  // nullopt if unsynced or not a box.
+  // World-frame centre, half-height, and closing-axis width of a synced
+  // dynamic object, or nullopt if unsynced or not a box.
   struct ObjectGeometry {
     geometry_msgs::msg::PoseStamped centre;
     double half_height_m = 0.0;
+    double width_m = 0.0;  // BOX_X — only correct because grasp_pose fixes yaw=0.0
   };
   std::optional<ObjectGeometry> known_object_geometry(const std::string& object_id) const;
 

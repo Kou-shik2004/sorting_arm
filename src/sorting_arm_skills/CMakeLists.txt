@@ -24,6 +24,7 @@ find_package(moveit_msgs REQUIRED)
 find_package(moveit_core REQUIRED)
 find_package(shape_msgs REQUIRED)
 find_package(control_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(sorting_arm_interfaces REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 
@@ -53,6 +54,7 @@ ament_target_dependencies(sorting_arm_skills PUBLIC
   moveit_msgs
   shape_msgs
   control_msgs
+  sensor_msgs
   sorting_arm_interfaces
 )
 target_link_libraries(sorting_arm_skills PUBLIC

@@ -335,6 +335,7 @@ std::optional<SceneManager::ObjectGeometry> SceneManager::known_object_geometry(
   geometry.centre.header.frame_id = object.header.frame_id;
   geometry.centre.pose = object.primitive_poses.front();
   geometry.half_height_m = primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Z] / 2.0;
+  geometry.width_m = primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_X];
   return geometry;
 }
 

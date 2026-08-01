@@ -35,8 +35,8 @@ class PickServerNode {
   // The pick sequence itself. Returns as soon as a step fails or reports
   // cancellation.
   SkillResult pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre,
-                   double half_height_m, std::stop_token stop_token, std::shared_ptr<Pick::Feedback> feedback,
-                   std::shared_ptr<GoalHandle> goal_handle);
+                   double half_height_m, double width_m, std::stop_token stop_token,
+                   std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle);
 
   std::shared_ptr<rclcpp::Node> node_;
   std::shared_ptr<MotionCommander> motion_;

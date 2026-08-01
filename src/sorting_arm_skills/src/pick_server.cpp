@@ -57,7 +57,7 @@ void PickServerNode::handle_accepted(std::shared_ptr<GoalHandle> goal_handle) {
 }
 
 SkillResult PickServerNode::pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre,
-                                 double half_height_m, std::stop_token stop_token,
+                                 double half_height_m, double width_m, std::stop_token stop_token,
                                  std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle) {
   auto enter_phase = [&](const std::string& phase) {
     feedback->phase = phase;
@@ -155,7 +155,7 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
   if (enter_phase("close_gripper")) {
     return restore_contacts(skill_error("close_gripper", "cancellation requested"));
   }
-  const auto grasp_outcome = gripper_->close();
+  const auto grasp_outcome = gripper_->close(width_m);
   if (!grasp_outcome.ok) {
     return restore_contacts(skill_error("close_gripper", grasp_outcome.detail, grasp_outcome.native_code));
   }
@@ -181,6 +181,14 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
   const auto retreat_result = motion_->move_cartesian_to(retreat);
   if (!retreat_result.ok) return retreat_result;
 
+  // did the lift actually hold, or did the jaw spring back open on the way up
+  feedback->phase = "verify_hold";
+  goal_handle->publish_feedback(feedback);
+  const auto hold_outcome = gripper_->verify_hold(width_m);
+  if (!hold_outcome.object_present) {
+    return skill_error("verify_hold", hold_outcome.detail);
+  }
+
   return skill_ok("retreat");
 }
 
@@ -198,8 +206,8 @@ void PickServerNode::run(std::stop_token stop_token, std::shared_ptr<GoalHandle>
     return;
   }
 
-  const auto outcome =
-      pick(goal->object_id, geometry->centre, geometry->half_height_m, stop_token, feedback, goal_handle);
+  const auto outcome = pick(goal->object_id, geometry->centre, geometry->half_height_m, geometry->width_m, stop_token,
+                            feedback, goal_handle);
   result->result = to_msg(outcome);
 
   if (goal_handle->is_canceling()) {
