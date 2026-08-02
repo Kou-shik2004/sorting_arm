@@ -52,7 +52,9 @@ GripperCommander::GripperCommander(std::shared_ptr<rclcpp::Node> node) {
 }
 
 SkillResult GripperCommander::send_goal(double position, const std::string& phase,
-                                        GripperCommandAction::Result& result) {
+                                        GripperCommandAction::Result& result,
+                                        bool& timed_out_waiting_for_result) {
+  timed_out_waiting_for_result = false;
   const auto goal_timeout = std::chrono::duration<double>(goal_timeout_s_);
   const auto result_timeout = std::chrono::duration<double>(result_timeout_s_);
 
@@ -78,6 +80,7 @@ SkillResult GripperCommander::send_goal(double position, const std::string& phas
   if (result_future.wait_for(result_timeout) != std::future_status::ready) {
     // give up on our end, but the controller keeps driving the joint unless we say otherwise
     client_->async_cancel_goal(goal_handle);
+    timed_out_waiting_for_result = true;
     return skill_error(phase, "gripper result timed out");
   }
   const auto wrapped = result_future.get();
@@ -91,7 +94,8 @@ SkillResult GripperCommander::send_goal(double position, const std::string& phas
 
 SkillResult GripperCommander::open() {
   GripperCommandAction::Result result;
-  return send_goal(open_position_, "open_gripper", result);
+  bool timed_out_waiting_for_result = false;
+  return send_goal(open_position_, "open_gripper", result, timed_out_waiting_for_result);
 }
 
 void GripperCommander::joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg) {
@@ -152,9 +156,10 @@ GraspOutcome GripperCommander::close(double object_width_m) {
               *target_rad, target_gap_m * 1000.0);
 
   GripperCommandAction::Result result;
-  const auto sent = send_goal(*target_rad, "close_gripper", result);
+  bool timed_out_waiting_for_result = false;
+  const auto sent = send_goal(*target_rad, "close_gripper", result, timed_out_waiting_for_result);
   if (!sent.ok) {
-    if (sent.message == "gripper result timed out") {
+    if (timed_out_waiting_for_result) {
       // send_goal already canceled this goal, which only freezes the target at
       // wherever the joint physically was — our timeout isn't proof nothing was
       // caught, so check the jaw directly before believing the controller's silence

@@ -44,13 +44,14 @@
         </joint>
 
         <!-- dart's installed plugin has zero mimic feature symbols (checked with nm -D),
-             so no native constraint exists to fight gz_ros2_control's own mimic drive -
-             followers stay state-only, but mimic="false" is gone or theyd get no drive at all -->
+             so gz_ros2_control's own control-cycle mimic drive is the followers' only
+             enforcer - nothing native competes with it, unlike under bullet_featherstone -->
         <joint name="robotiq_85_left_knuckle_joint">
             <command_interface name="position"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
+
         <joint name="robotiq_85_right_knuckle_joint">
             <state_interface name="position"/>
             <state_interface name="velocity"/>

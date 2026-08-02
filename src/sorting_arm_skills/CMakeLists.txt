@@ -73,6 +73,12 @@ target_link_libraries(motion_demo PRIVATE sorting_arm_skills)
 # Pre-existing hand-run MoveIt scratch executable — unrelated to this slice,
 # left exactly as it was.
 
+# Hand-run verification harness (Step 11's own actions, no orchestration
+# layer) — links sorting_arm_skills only for its already-public rclcpp_action/
+# sorting_arm_interfaces deps, not for any of its MoveIt/skills logic.
+add_executable(sequence_demo src/sequence_demo_main.cpp)
+target_link_libraries(sequence_demo PRIVATE sorting_arm_skills)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(AMENT_LINT_AUTO_EXCLUDE
@@ -100,7 +106,7 @@ install(
   RUNTIME DESTINATION bin
 )
 install(
-  TARGETS skill_server_node motion_demo
+  TARGETS skill_server_node motion_demo sequence_demo
   DESTINATION lib/${PROJECT_NAME}
 )
 

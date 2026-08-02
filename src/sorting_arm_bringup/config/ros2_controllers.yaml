@@ -41,9 +41,6 @@ arm_controller:
 gripper_controller:
   ros__parameters:
     joint: robotiq_85_left_knuckle_joint
-    # default false aborts a real jam instead of reporting it — close() reads
-    # result.stalled as the grasp verdict, so a stall has to come back SUCCEEDED
+    # default false aborts the goal outright on a stall — we want the SUCCEEDED
+    # branch instead, so close() reaches its own jaw measurement, not an abort
     allow_stalling: true
-    # default 0.001 never sees a stall on contact — the fingers jiggle on the
-    # cube and stay above that the whole 10s, so the goal just times out on us
-    stall_velocity_threshold: 0.02

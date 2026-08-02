@@ -57,7 +57,10 @@ class GripperCommander {
 
   // Sends one goal and blocks up to result_timeout_s_ for a terminal result.
   // Cancels the goal itself on any timeout — nothing is left driving the joint.
-  SkillResult send_goal(double position, const std::string& phase, GripperCommandAction::Result& result);
+  // timed_out_waiting_for_result is set true only for that specific timeout, so
+  // close() can tell it apart from a rejection/abort without matching on message text.
+  SkillResult send_goal(double position, const std::string& phase, GripperCommandAction::Result& result,
+                        bool& timed_out_waiting_for_result);
 
   void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg);
   GraspOutcome evaluate_capture(double object_width_m) const;

@@ -56,6 +56,20 @@ void PickServerNode::handle_accepted(std::shared_ptr<GoalHandle> goal_handle) {
   state_->start_worker([this, goal_handle](std::stop_token stop_token) { run(stop_token, goal_handle); });
 }
 
+SkillResult PickServerNode::with_grasp_contacts_disabled(const std::string& object_id,
+                                                         const std::function<SkillResult()>& body) {
+  const auto allow_result = scene_->begin_grasp_contacts(object_id);
+  if (!allow_result.ok) return allow_result;
+
+  const auto body_result = body();
+
+  const auto restore_result = scene_->end_grasp_contacts();
+  if (restore_result.ok) return body_result;
+  if (body_result.ok) return restore_result;
+  return skill_error("grasp_contacts", body_result.message + "; " + restore_result.message,
+                     restore_result.native_code);
+}
+
 SkillResult PickServerNode::pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre,
                                  double half_height_m, double width_m, std::stop_token stop_token,
                                  std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle) {
@@ -91,21 +105,10 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
       continue;
     }
 
-    const auto allow_result = scene_->begin_grasp_contacts(object_id);
-    if (!allow_result.ok) {
-      return allow_result;
-    }
-
     MotionCommander::PreparedCartesianMotion candidate_descent;
-    const auto descent_result = motion_->plan_cartesian_from(candidate_pre_grasp, grasp, candidate_descent);
-    const auto restore_result = scene_->end_grasp_contacts();
-    if (!restore_result.ok) {
-      if (!descent_result.ok) {
-        return skill_error("grasp_contacts", descent_result.message + "; " + restore_result.message,
-                           restore_result.native_code);
-      }
-      return restore_result;
-    }
+    const auto descent_result = with_grasp_contacts_disabled(object_id, [&] {
+      return motion_->plan_cartesian_from(candidate_pre_grasp, grasp, candidate_descent);
+    });
 
     if (!descent_result.ok) {
       last_candidate_result = descent_result;
@@ -134,47 +137,26 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
   if (!pre_grasp_result.ok) return pre_grasp_result;
 
   if (enter_phase("descend")) return skill_error("descend", "cancellation requested");
-  const auto allow_result = scene_->begin_grasp_contacts(object_id);
-  if (!allow_result.ok) return allow_result;
 
-  auto restore_contacts = [&](const SkillResult& primary_result) {
-    const auto restore_result = scene_->end_grasp_contacts();
-    if (restore_result.ok) {
-      return primary_result;
-    }
-    if (primary_result.ok) {
-      return restore_result;
-    }
-    return skill_error("grasp_contacts", primary_result.message + "; " + restore_result.message,
-                       restore_result.native_code);
-  };
+  const auto sequence_result = with_grasp_contacts_disabled(object_id, [&]() -> SkillResult {
+    const auto descend_result = motion_->execute_prepared_cartesian(prepared_descent);
+    if (!descend_result.ok) return descend_result;
 
-  const auto descend_result = motion_->execute_prepared_cartesian(prepared_descent);
-  if (!descend_result.ok) return restore_contacts(descend_result);
+    if (enter_phase("close_gripper")) return skill_error("close_gripper", "cancellation requested");
+    const auto grasp_outcome = gripper_->close(width_m);
+    if (!grasp_outcome.ok) return skill_error("close_gripper", grasp_outcome.detail, grasp_outcome.native_code);
 
-  if (enter_phase("close_gripper")) {
-    return restore_contacts(skill_error("close_gripper", "cancellation requested"));
-  }
-  const auto grasp_outcome = gripper_->close(width_m);
-  if (!grasp_outcome.ok) {
-    return restore_contacts(skill_error("close_gripper", grasp_outcome.detail, grasp_outcome.native_code));
-  }
+    feedback->phase = "verify_grasp";
+    goal_handle->publish_feedback(feedback);
+    if (!grasp_outcome.object_present) return skill_error("verify_grasp", grasp_outcome.detail);
 
-  feedback->phase = "verify_grasp";
-  goal_handle->publish_feedback(feedback);
-  if (!grasp_outcome.object_present) {
-    return restore_contacts(skill_error("verify_grasp", grasp_outcome.detail));
-  }
-
-  // no cancellation check between verify_grasp and attach — an unverified
-  // grasp must never reach the scene
-  feedback->phase = "attach";
-  goal_handle->publish_feedback(feedback);
-  const auto attach_result = scene_->attach(object_id);
-  if (!attach_result.ok) return restore_contacts(attach_result);
-
-  const auto restore_result = restore_contacts(skill_ok("attach"));
-  if (!restore_result.ok) return restore_result;
+    // no cancellation check between verify_grasp and attach — an unverified
+    // grasp must never reach the scene
+    feedback->phase = "attach";
+    goal_handle->publish_feedback(feedback);
+    return scene_->attach(object_id);
+  });
+  if (!sequence_result.ok) return sequence_result;
 
   if (enter_phase("retreat")) return skill_error("retreat", "cancellation requested");
   const auto retreat = retreat_pose(grasp, retreat_height_m_);

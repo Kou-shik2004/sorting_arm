@@ -263,49 +263,62 @@ SkillResult MotionCommander::plan_pose_candidate(const geometry_msgs::msg::PoseS
   return skill_ok("pre_grasp");
 }
 
-SkillResult MotionCommander::plan_cartesian_from(const PreparedPoseMotion& start,
-                                                 const geometry_msgs::msg::PoseStamped& target,
-                                                 PreparedCartesianMotion& prepared) {
+SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::RobotState& start_state,
+                                                       const geometry_msgs::msg::PoseStamped& target,
+                                                       const std::string& phase,
+                                                       moveit_msgs::msg::RobotTrajectory& trajectory_msg) {
   if (!validate_pose(target, planning_frame_)) {
-    return skill_error("descend_preflight", "cartesian target failed frame/finite validation");
+    return skill_error(phase, "cartesian target failed frame/finite validation");
   }
   if (arm_->getEndEffectorLink() != tcp_link_) {
-    return skill_error("descend_preflight", "commanded link is not the configured tcp link");
-  }
-  if (start.terminal_state == nullptr) {
-    return skill_error("descend_preflight", "pre-grasp candidate has no terminal robot state");
+    return skill_error(phase, "commanded link is not the configured tcp link");
   }
 
-  arm_->setStartState(*start.terminal_state);
+  arm_->setStartState(start_state);
   const std::vector<geometry_msgs::msg::Pose> waypoints{target.pose};
-  moveit_msgs::msg::RobotTrajectory trajectory_msg;
   moveit_msgs::msg::MoveItErrorCodes error_code;
   const double fraction =
       arm_->computeCartesianPath(waypoints, eef_step_m_, trajectory_msg, /*avoid_collisions=*/true, &error_code);
   arm_->setStartStateToCurrentState();
 
   if (error_code.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
-    return skill_error("descend_preflight", "cartesian path computation reported an error", error_code.val);
+    return skill_error(phase, "cartesian path computation reported an error", error_code.val);
   }
   if (!accept_cartesian_fraction(fraction, min_fraction_)) {
-    return skill_error("descend_preflight", "cartesian coverage fraction below the configured minimum", error_code.val);
+    return skill_error(phase, "cartesian coverage fraction below the configured minimum", error_code.val);
   }
 
   robot_trajectory::RobotTrajectory robot_traj(arm_->getRobotModel(), arm_group_);
-  robot_traj.setRobotTrajectoryMsg(*start.terminal_state, trajectory_msg);
+  robot_traj.setRobotTrajectoryMsg(start_state, trajectory_msg);
 
   trajectory_processing::TimeOptimalTrajectoryGeneration totg;
   if (!totg.computeTimeStamps(robot_traj, velocity_limits_, acceleration_limits_, velocity_scaling_,
                               acceleration_scaling_)) {
-    return skill_error("descend_preflight", "time-optimal retiming failed");
+    return skill_error(phase, "time-optimal retiming failed");
   }
   if (!accept_segment_duration(robot_traj.getDuration(), max_segment_duration_s_)) {
-    return skill_error("descend_preflight", "retimed duration exceeds the configured ceiling");
+    return skill_error(phase, "retimed duration exceeds the configured ceiling");
   }
+
+  robot_traj.getRobotTrajectoryMsg(trajectory_msg);
+  return skill_ok(phase);
+}
+
+SkillResult MotionCommander::plan_cartesian_from(const PreparedPoseMotion& start,
+                                                 const geometry_msgs::msg::PoseStamped& target,
+                                                 PreparedCartesianMotion& prepared) {
+  if (start.terminal_state == nullptr) {
+    return skill_error("descend_preflight", "pre-grasp candidate has no terminal robot state");
+  }
+
+  moveit_msgs::msg::RobotTrajectory trajectory_msg;
+  const auto compute_result =
+      compute_retimed_cartesian(*start.terminal_state, target, "descend_preflight", trajectory_msg);
+  if (!compute_result.ok) return compute_result;
 
   MoveGroupInterface::Plan plan;
   moveit::core::robotStateToRobotStateMsg(*start.terminal_state, plan.start_state);
-  robot_traj.getRobotTrajectoryMsg(plan.trajectory);
+  plan.trajectory = trajectory_msg;
   prepared.plan = std::move(plan);
   return skill_ok("descend_preflight");
 }
@@ -333,47 +346,15 @@ SkillResult MotionCommander::execute_prepared_cartesian(const PreparedCartesianM
 }
 
 SkillResult MotionCommander::move_cartesian_to(const geometry_msgs::msg::PoseStamped& target) {
-  if (!validate_pose(target, planning_frame_)) {
-    return skill_error("cartesian_motion", "cartesian target failed frame/finite validation");
-  }
-  if (arm_->getEndEffectorLink() != tcp_link_) {
-    return skill_error("cartesian_motion", "commanded link is not the configured tcp link");
-  }
-
-  const std::vector<geometry_msgs::msg::Pose> waypoints{target.pose};
-  moveit_msgs::msg::RobotTrajectory trajectory_msg;
-  moveit_msgs::msg::MoveItErrorCodes error_code;
-  // installed-jazzy overload without the deprecated jump_threshold parameter
-  const double fraction =
-      arm_->computeCartesianPath(waypoints, eef_step_m_, trajectory_msg, /*avoid_collisions=*/true, &error_code);
-
-  if (error_code.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
-    return skill_error("cartesian_motion", "cartesian path computation reported an error", error_code.val);
-  }
-  if (!accept_cartesian_fraction(fraction, min_fraction_)) {
-    return skill_error("cartesian_motion", "cartesian coverage fraction below the configured minimum", error_code.val);
-  }
-
   const auto current_state = arm_->getCurrentState();
   if (current_state == nullptr) {
-    return skill_error("cartesian_motion", "no current robot state available for retiming");
-  }
-  robot_trajectory::RobotTrajectory robot_traj(arm_->getRobotModel(), arm_group_);
-  robot_traj.setRobotTrajectoryMsg(*current_state, trajectory_msg);
-
-  trajectory_processing::TimeOptimalTrajectoryGeneration totg;
-  const bool retimed = totg.computeTimeStamps(robot_traj, velocity_limits_, acceleration_limits_, velocity_scaling_,
-                                              acceleration_scaling_);
-  if (!retimed) {
-    return skill_error("cartesian_motion", "time-optimal retiming failed");
+    return skill_error("cartesian_motion", "no current robot state available");
   }
 
-  const double duration_s = robot_traj.getDuration();
-  if (!accept_segment_duration(duration_s, max_segment_duration_s_)) {
-    return skill_error("cartesian_motion", "retimed duration exceeds the configured ceiling");
-  }
+  moveit_msgs::msg::RobotTrajectory trajectory_msg;
+  const auto compute_result = compute_retimed_cartesian(*current_state, target, "cartesian_motion", trajectory_msg);
+  if (!compute_result.ok) return compute_result;
 
-  robot_traj.getRobotTrajectoryMsg(trajectory_msg);
   MoveGroupInterface::Plan plan;
   plan.trajectory = trajectory_msg;
 

@@ -8,6 +8,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "moveit/move_group_interface/move_group_interface.hpp"
 #include "moveit/robot_state/robot_state.hpp"
+#include "moveit_msgs/msg/robot_trajectory.hpp"
 #include "rclcpp/node.hpp"
 #include "sorting_arm_skills/types.hpp"
 
@@ -48,6 +49,12 @@ class MotionCommander {
 
  private:
   void load_trajectory_limits();
+
+  // computeCartesianPath from start_state to target, then TOTG retime — the one
+  // path both move_cartesian_to and plan_cartesian_from need, so it lives once.
+  SkillResult compute_retimed_cartesian(const moveit::core::RobotState& start_state,
+                                        const geometry_msgs::msg::PoseStamped& target, const std::string& phase,
+                                        moveit_msgs::msg::RobotTrajectory& trajectory_msg);
 
   rclcpp::Node::SharedPtr node_;
   std::string planning_frame_;

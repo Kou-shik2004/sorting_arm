@@ -208,8 +208,8 @@
             <child link="${prefix}robotiq_85_left_inner_knuckle_link" />
             <axis xyz="0 -1 0" />
             <origin xyz="0.0127 0.0 0.06142" rpy="0 0 0" />
-            <limit lower="0.0" upper="0.8" velocity="0.5" effort="50" />
             <mimic joint="${prefix}robotiq_85_left_knuckle_joint" />
+            <limit lower="0.0" upper="0.8" velocity="0.5" effort="50" />
         </joint>
 
         <joint name="${prefix}robotiq_85_right_inner_knuckle_joint" type="revolute">
@@ -217,8 +217,8 @@
             <child link="${prefix}robotiq_85_right_inner_knuckle_link" />
             <axis xyz="0 -1 0" />
             <origin xyz="-0.0127 0.0 0.06142" rpy="0 0 0" />
-            <limit lower="-0.8" upper="0.0" velocity="0.5" effort="50" />
             <mimic joint="${prefix}robotiq_85_left_knuckle_joint" multiplier="-1" />
+            <limit lower="-0.8" upper="0.0" velocity="0.5" effort="50" />
         </joint>
 
         <joint name="${prefix}robotiq_85_left_finger_tip_joint" type="revolute">
@@ -226,8 +226,8 @@
             <child link="${prefix}robotiq_85_left_finger_tip_link" />
             <axis xyz="0 -1 0" />
             <origin xyz="0.00563134 0.0 0.04718515" rpy="0 0 0" />
-            <limit lower="-0.8" upper="0.0" velocity="0.5" effort="50" />
             <mimic joint="${prefix}robotiq_85_left_knuckle_joint" multiplier="-1" />
+            <limit lower="-0.8" upper="0.0" velocity="0.5" effort="50" />
         </joint>
 
         <joint name="${prefix}robotiq_85_right_finger_tip_joint" type="revolute">
@@ -235,12 +235,13 @@
             <child link="${prefix}robotiq_85_right_finger_tip_link" />
             <axis xyz="0 -1 0" />
             <origin xyz="-0.00563134 0.0 0.04718515" rpy="0 0 0" />
-            <limit lower="0.0" upper="0.8" velocity="0.5" effort="50" />
             <mimic joint="${prefix}robotiq_85_left_knuckle_joint" />
+            <limit lower="0.0" upper="0.8" velocity="0.5" effort="50" />
         </joint>
 
-        <!-- inline <surface> in a URDF <collision> is not schema, gz sdf drops it silently.
-             this is the form that actually reaches bullet_featherstone -->
+        <!-- inline <surface> in a URDF <collision> is invalid schema, gz sdf dropped it
+             silently - this <gazebo> form is what actually reaches the physics engine.
+             mu1/mu2=5.0 matches the box's own friction (sorting_cell.sdf); never A/B tested alone -->
         <gazebo reference="${prefix}robotiq_85_left_finger_tip_link">
             <mu1>5.0</mu1>
             <mu2>5.0</mu2>
