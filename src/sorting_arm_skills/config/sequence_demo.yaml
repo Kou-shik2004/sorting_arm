@@ -1,0 +1,23 @@
+# Catalogue for sequence_demo — one row per index across every array below.
+# Object centres/sizes are sorting_cell.sdf's red_box_1/blue_box_1/blue_box_2/
+# red_box_2 (model pose, 0.04 m cube). Destinations put each box centred on its
+# own tray floor (floor top z=0.505, so a 0.04 box rests centred at 0.525),
+# red objects into red_tray, blue into blue_tray — routing is Step 12's job,
+# not this file's; these are fixed, not computed.
+/**:
+  ros__parameters:
+    objects:         ["red_box_1", "blue_box_1", "blue_box_2", "red_box_2"]
+    object_label:    ["red",       "blue",       "blue",       "red"]
+    object_centre_x: [0.40,  0.40,  0.52,  0.52]
+    object_centre_y: [0.12, -0.12,  0.12, -0.12]
+    object_centre_z: [0.520, 0.520, 0.520, 0.520]
+    object_size_x:   [0.04, 0.04, 0.04, 0.04]
+    object_size_y:   [0.04, 0.04, 0.04, 0.04]
+    object_size_z:   [0.04, 0.04, 0.04, 0.04]
+    destination_x:   [0.58,  0.58,  0.58,  0.58]
+    destination_y:   [0.38, -0.32, -0.38,  0.32]
+    destination_z:   [0.525, 0.525, 0.525, 0.525]
+
+    result_timeout_s: 180.0
+    stop_on_failure: true
+    planning_frame: "world"

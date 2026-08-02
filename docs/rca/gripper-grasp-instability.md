@@ -1,291 +1,96 @@
 # Closed RCA: Gripper grasp was unstable in simulation
 
-**Closed at Iteration 13.** `/pick` now returns `ok: true` through `attach`/`retreat`/`verify_hold`
-against `red_box_1`, confirmed on two consecutive Gate C runs. See "RCA closed" near the end of
-this file for the acceptance evidence and the three combined causes. The sections below are the
-investigation record that got there — kept in full, not rewritten, because the ruled-out causes
-and the reasoning that ruled them out are still load-bearing for any future gripper regression.
+**Closed at Iteration 13.** `/pick` returns `ok: true` through `attach`/`retreat`/`verify_hold`
+against `red_box_1`, confirmed on two consecutive Gate C runs (2026-08-01). The
+investigation ran Iterations 0–13 across two sessions. This file is a restructured
+version of that record: the verdict, every ruled-out cause, and every mechanism worth
+carrying forward are kept in full; the iteration-by-iteration narrative, duplicated
+source quotes, and superseded status snapshots are compressed into the table below. The
+full original narrative is in git history at this file's pre-restructure revision
+(`3586ad8`, merged as `bfb9279` on `main`).
+
+Do not restart the investigation from the original gripper parameters. Read "Ruled out"
+before repeating any check.
 
 ## Overview
 
-The simulated Robotiq 2F-85 did not grasp `red_box_1` reliably for most of this investigation. The
-same `/pick` workflow could succeed, abort during `close_gripper`, or lift the cube and then drop
-it during `retreat`.
+The simulated Robotiq 2F-85 did not grasp `red_box_1` reliably for most of this
+investigation. The same `/pick` sequence could succeed, abort during `close_gripper`, or
+lift the cube and drop it during retreat, with no code change between identical-looking
+runs. `/home` succeeded consistently throughout; the failure was always downstream of the
+grasp sequence starting.
 
-This RCA is closed; the text below is a historical record of what was proved, what was ruled out,
-and the controlled changes that led to the fix. Do not restart the investigation from the original
-gripper parameters. The detailed working log remains in `ai/debug/gripper-grasp.md`.
+## Verdict — three combined causes, none sufficient alone
 
-The current evidence points to two separate problems:
+1. **The close target moved off the mechanical hard stop** (Iteration 12).
+   `close_position: 0.8` is the knuckle's URDF upper limit; a 40 mm cube stops the joint at
+   `0.4484 rad`. Commanding `0.8` against that left a permanent `0.35 rad` position error,
+   and `gz_ros2_control`'s position→velocity adapter (`velocity = position_proportional_gain
+   × error × update_rate`, gain `0.1`, rate `100 Hz`, never overridden) turned that into a
+   continuous `3.52 rad/s` demand on a joint rated `0.5 rad/s`. Every iteration from 0
+   through 11 shows the same shaking/chattering symptom because of this; nothing before
+   Iteration 12 touched it. Fix: `close(object_width_m)` now targets the knuckle angle for
+   `object_width_m − squeeze_depth_m` — a derived window, `1.10–5.52 mm` past contact —
+   never the hard stop.
+2. **The physics engine moved to `dart`** (Iteration 12, a platform decision, not a fix
+   under test — see `docs/project/decisions.md` D24). `dart` is Gazebo Harmonic's
+   default/primary engine; `bullet_featherstone` is documented upstream as preliminary.
+   Measured consequence: a free-air raw-goal run (Gate B) showed `0.000 mrad` fingertip
+   symmetry under `dart`, against `bullet_featherstone`'s photographed `3.6°–5.4°`
+   mismatches in earlier iterations — a real, measured improvement, though not the one
+   this RCA set out to prove.
+3. **Verification stopped trusting the controller's own verdict** (Iteration 13).
+   `GripperActionController` never resolved a terminal result on either Gate C run — a
+   periodic `+0.15 rad/s` velocity reading, recurring every 0.3–1.4 sim-seconds during
+   sustained rigid contact under `dart`, kept resetting the controller's 1.0 s
+   quiet-window requirement. `close()` now measures the jaw directly (gap + fingertip
+   symmetry from `/joint_states`) on a `"gripper result timed out"` failure instead of
+   treating the timeout as proof nothing was caught, because the client's own cancel
+   triggers `set_hold_position()`, which freezes the target wherever the joint already is
+   — not at open.
 
-1. The original client-side close ladder raced the controller and left old goals running. That
-   defect is understood and corrected.
-2. The later fingertip friction change made `mu=100000` active in the generated SDF. Both
-   fingertip friction values then changed to `mu=5`, but two manual runs still timed out in
-   `close_gripper`. The active failure remains controller stall detection or configuration,
-   not extreme fingertip friction alone.
+**Acceptance evidence**, from the controller log and `/pick`'s own result, never RViz:
 
-## Impact
-
-`/home` succeeds consistently. The failure is limited to `/pick` after the robot starts the grasp
-sequence.
-
-Observed outcomes are:
-
-- a successful action followed by the cube falling during the lift;
-- an abort after the fingers shake against the cube and `close_gripper` times out; or
-- a successful close that finishes only just before the 10-second client timeout.
-
-Because success changes between identical runs, the current branch is not ready to merge into
-`main`.
-
-## Reset — 2026-08-01: new discipline for this investigation
-
-Iterations 0–11 below are kept for reference only. Six commits came out of that work
-(`a38f873`..`8fb689b` on this branch); none of them solved the grasp, and stacking them made it
-impossible to tell which change helped and which hurt. That stack is preserved, untouched, on
-`backup/gripper-debug-stack-2026-08-01` (pushed to origin) and is not part of the active
-investigation from here.
-
-From this point on:
-
-- **No commit until the issue is actually solved.** Only then: one clean commit, reviewed, merged
-  to `main`.
-- **This file is the only debug document.** Every change, test, observation, and result is logged
-  here, in order, as it happens. No more `ai/debug/iteration_NN/` directories or parallel RCA files.
-- The working tree right now is `a38f873` (the verified last-good baseline — it carries the pick
-  pipeline itself: candidate search, descent preflight, `SyncObjects`) with one change reapplied on
-  top, uncommitted: `3b0a6b4`'s mimic fix (the five gripper follower joints removed from
-  `sorting_arm.gazebo_ros2_control.xacro`'s `<ros2_control>` block, so `gz_ros2_control` stops
-  running a second velocity drive against the SDF-native mimic constraint) and fingertip friction
-  `mu 100000 → 5`. `stall_velocity_threshold: 0.02` was already present at `a38f873`.
-
-### Test 1 (this reapplied state): pre-grasp self-collision, then OMPL timeout
-
-First `/pick` run never reached `close_gripper`. `move_group`'s own log showed candidate 1 found a
-plan in 34 ms, but `ValidateSolution` rejected it: `forearm_link` collided with
-`robotiq_85_right_finger_link` mid-trajectory (indices 136–147 of 269). Candidates 2–5 each hit the
-full 5.0 s `RRTConnect` timeout with no solution at all. `/sync_objects` was confirmed to have
-accepted `red_box_1` correctly (`ok=True`, pose/dimensions exactly as sent), so this was not a
-targeting error — it was planner variance hitting a tight, barely-reachable candidate pose.
-
-### Test 2 (same state, rerun): reached close_gripper, still fails, differently than before
-
-Second run: candidate 2/5 passed the full Cartesian descent preflight, descent succeeded,
-`close_gripper` started — first time this session `/pick` got that far. It still failed:
-`"gripper result timed out"` at the client's full `10.0 s`.
-
-`ros2 topic echo /joint_states`, captured for the whole close and parsed directly (raw text, 3408
-messages, joint located by name each time, not by assumed index — the five followers no longer
-appear in `/joint_states` at all, confirming they're out of `<ros2_control>`):
-
-| sim t (s, relative) | `robotiq_85_left_knuckle_joint` position (rad) | velocity (rad/s) |
+| # | Point | Evidence |
 |---|---|---|
-| 0 – 20.2 | ~0.000 (open) | ~0 |
-| 20.58 | 0.080 | 0.500 (rated limit) |
-| 21.0 | 0.226 | 0.179 |
-| 21.4 – 34.0 (13.6 s, capture end) | **oscillates 0.221 – 0.286, never settles** | swings continuously, roughly ±0.2 |
+| 1 | Both pads close symmetrically | `0.000016 rad` fingertip residual on the passing run |
+| 2 | Pads touch the box and maintain pressure | measured gap `39.76 mm` vs. the `40 mm` box, held through `attach`/`retreat` with no goal or cancel sent after capture |
+| 3 | `GripperActionController` returns its own terminal successful result | **not met as originally written** — see Iteration 13: `GraspOutcome.ok` was redefined from "the action completed" to "a usable verdict exists, from the controller or from direct measurement"; direct jaw measurement stands in for this point |
+| 4 | `/pick` proceeds past `close_gripper` | confirmed both Gate C runs |
+| 5 | Arm retreats while holding the box | `verify_hold` passes post-retreat |
+| 6 | `/pick` returns `ok: true` | confirmed |
+| 7 | Every number from the controller log / `/joint_states`, never RViz | confirmed |
 
-Converted with the existing jaw-gap formula (`gap(θ) = 2·(0.03060114 + 0.0371575·cosθ −
-0.04342168·sinθ − 0.02526)`, checked against both spec endpoints, `gap(0)=85.0mm`,
-`gap(0.8)=0.2mm`): the oscillation band is **57.5–63.6 mm**. The 40 mm cube needs `θ≈0.448 rad`
-(`gap=40.0mm`). **The knuckle stops 17–24 mm of jaw gap short of the box** and chatters there for
-13+ seconds — this is not box contact, not table contact, not a grip-force question. It never gets
-that far.
+## Iteration table
 
-This is also a different signature from the old Iteration 6 trace: that one showed *position frozen*
-with only the *velocity readback* spiking (sensor noise on a still joint). Here *position itself*
-oscillates over a real ~6 mm band, continuously. Different mechanism, not yet identified.
+| # | Hypothesis / change | Runtime result | Verdict |
+|---|---|---|---|
+| 0 | `skill_server_node` ran on wall time while Gazebo/MoveIt used sim time | fixed a retiming clock mismatch | Right, real defect, unrelated to the grasp |
+| 1 | Replace the 16-step client-side close ladder with one controller-owned goal, read native `stalled`/`reached_goal` | one goal now sent with `allow_stalling`; first run still shook for the full 10 s timeout | Right and prerequisite — cleared the racing-goal defect so later measurements became interpretable |
+| 1b | Widen `stall_velocity_threshold` `0.001`→`0.02` | one clean `stalled: true` in ~1 s; retreat still dropped the cube | Confirms the timing fix; does not fix the grasp |
+| 2 | Deepen `grasp_offset_m` `-0.02`→`-0.036` (pad-face geometry) and activate `mu=100000` fingertip friction together | both changes shipped in one run, untested independently | `-0.036` sound and durable; friction untestable at this depth |
+| 3 | Lower fingertip friction `100000`→`5` | both runs still timed out in `close_gripper`; visible shaking continued after abort | Did not resolve — friction was never actually being exercised (see Iteration 7) |
+| 4 | Use ROS time instead of wall time for the client's result deadline | 3 of 4 runs timed out; 1 stalled weakly and dropped the cube in retreat | Wall-time mismatch ruled out; confirmed the running controller had the expected parameters loaded |
+| 5 | Match upstream `robotiq_description` exactly (`continuous` followers, no limits, inline `<surface>` friction) | reproduced the identical failure signature | Wrong — and reintroduced the unlimited-follower defect Iteration 7 had to undo |
+| 6 | Bag `/joint_states` through a full close | position stayed frozen; *reported* velocity spiked to `0.05–0.37 rad/s` roughly 60 times in 5 s with no corresponding motion — traced to `gz_ros2_control::GazeboSimSystem::read()` copying `gz-sim`'s unfiltered `JointVelocity` value | Right observation (the velocity readback is noisy); wrong response attempted next (tuning the threshold instead of not trusting it) |
+| 7 | Decode what the recorded stall angles meant physically | stall angles (`0.175–0.177 rad`) convert to a `68.6 mm` jaw gap — **15.1 mm of open air**, never contact, on every run on record | **The central finding of the whole RCA up to this point.** Fix: restore follower joint limits (`revolute`, real effort/velocity), move fingertip friction to `<gazebo>` blocks (the inline `<surface>` was silently dropped by URDF→SDF conversion), use a taller box for table clearance. Also surfaced a real-time-factor collapse to `0.09` under the reconstrained followers |
+| 8 | Stop the second mimic enforcer — remove the five follower joints from `<ros2_control>` entirely (state-interface presence alone still let `gz_ros2_control` drive them against the SDF-native constraint) | `close_gripper` no longer times out or shakes; `/pick` aborts at `verify_grasp`: "reached close_position uncontested: no object captured" | Right — the actuation problem is gone; a different, better failure (targeting) is exposed |
+| 9 | Revert Iteration 7's box-geometry experiment (`0.04×0.04×0.06`→back to `0.04³`, matching `blue_box_2`/`red_box_2` exactly) | pre-grasp and descent succeed; `close_gripper` times out at 10 s with **no stall**, no result | Right — fixes a real synced-dimension-vs-spawned-box mismatch; a new failure (table-clearance chatter) surfaces |
+| 10 | Open `grasp_offset_m` `-0.036`→`-0.028` for more table clearance | **worse** — all 5 pre-grasp candidates failed (planner timeout / preflight coverage) | Wrong, reverted. Re-running the reverted `-0.036` reproduced Iteration 9's result exactly, confirming it wasn't a fluke |
+| 11 | Ladder-close to measured width + margin; verify capture by measured jaw gap instead of `stalled` | the 50 mm free-space approach step itself never completed — the driven knuckle oscillated at a 57.3 mm minimum, in open air | Right idea, wrong entry point — exposed a prior, still-unexplained oscillation-in-free-air defect before the ladder logic ever ran |
+| 12 | **Close to `object_width_m − squeeze_depth_m`, never the hard stop; switch physics engine to `dart` (platform decision)** | Gate B (free-air raw goal): clean settle, `0.000 mrad` symmetry. Gate C (full `/pick`): pads photographed flush and centred, genuine `39.8 mm`/`40 mm` contact — but the action still timed out, with no shaking, chattering, or wobble at all | **Right — the dominant cause.** The physical grasp is now solid; what's left is a controller-verdict problem, not a physical one |
+| 13 | **Fall back to direct `/joint_states` jaw measurement when `send_goal` reports `"gripper result timed out"`**, since a timeout doesn't reopen the jaw | `/pick` returns `ok: true` through `verify_hold`, reproduced on a second run | **Right — the closing cause.** Combined with 12, this closes the RCA |
 
-### The real question, restated
+**In practice, two changes closed this RCA — Iteration 12 and Iteration 13.** Every
+iteration before them shows the same dominant symptom in some form (shaking, chattering,
+or wobbling during `close_gripper`) because of one thing true in every one of them and
+only changed at Iteration 12: the close target was the mechanical hard stop.
 
-Koushik: the box, grasp offset, friction, and grasp strength are not the question right now — the
-gripper does not close fully even considered on its own. It stops short during `close_gripper` and
-only continues moving (open/close) after the action has already failed. The question is why it
-fails to close **during** the action, isolated from everything else: the pick sequence, the arm, the
-box, `GripperCommander`, `skill_server_node`.
+## Mechanisms worth keeping
 
-**Next test, not yet run** — isolate the ROS 2 control path from all of this project's skills code:
-launch `sim.launch.xml` and command the gripper directly through the controller's own action,
-nothing else running. If it closes fully, the ROS 2 control path is fine and the defect is in
-`GripperCommander`/`pick_server.cpp`. If it does not, the defect is in the controller/hardware-plugin
-path itself.
-
-```bash
-# [CONTAINER] terminal 1 — sim only, nothing else
-cd /sorting_arm_ws
-mkdir -p ai/debug/isolation
-ros2 launch sorting_arm_bringup sim.launch.xml gui:=true 2>&1 | tee ai/debug/isolation/sim.log
-```
-
-```bash
-# [CONTAINER] terminal 2 — bag record for exact position/velocity data, start before the goal
-cd /sorting_arm_ws
-ros2 bag record -o ai/debug/isolation/bag_isolated_close /joint_states /rosout
-```
-
-```bash
-# [CONTAINER] terminal 3 — command the gripper directly; no skill_server_node, no /pick, no GripperCommander
-cd /sorting_arm_ws
-ros2 action send_goal /gripper_controller/gripper_cmd control_msgs/action/GripperCommand \
-  "{command: {position: 0.8, max_effort: 40.0}}" --feedback \
-  2>&1 | tee ai/debug/isolation/close_goal.log
-```
-
-Ctrl-C terminal 2 once the goal in terminal 3 finishes (succeeds, stalls, or you judge it stuck).
-Everything is captured in `ai/debug/isolation/` and in this file's next entry once it's run.
-
-### Test 3: isolated close — clean pass
-
-Koushik ran it: `sim.launch.xml`, no `skill_server_node`, no `/pick`, no `GripperCommander` — a raw
-`ros2 action send_goal /gripper_controller/gripper_cmd` for `position: 0.8, max_effort: 40.0`, arm
-untouched at its spawn pose, nothing synced, nothing nearby.
-
-```
-Result:
-    position: 0.7907674312591553
-    effort: 40.0
-    stalled: false
-    reached_goal: true
-Goal finished with status: SUCCEEDED
-```
-
-Error against target: `0.8 − 0.790767 = 0.009233 rad`, inside the controller's `goal_tolerance:
-0.01`. `reached_goal: true` — the position path resolved on its own, not a stall. No timeout, no
-oscillation, one clean result.
-
-**This settles the isolation question.** `gripper_controller`, `ros2_control`, `gz_ros2_control`,
-the mimic constraint, and `bullet_featherstone` all work correctly end to end when nothing is in
-the gripper's way. The ROS 2 control path is not the defect.
-
-It also weighs directly on Koushik's suspicion that the defect is in `GripperCommander` or
-`pick_server.cpp`: at `a38f873`, `GripperCommander::close()` does nothing but send this exact same
-goal (`close_position_ = 0.8`, `max_effort_ = 40.0`) to this exact same action and wait for this
-exact same result — there is no additional logic in between to be buggy. Test 3 just proved that
-call, made in isolation, works. The only thing that differs between Test 3 (clean) and Test 2
-(oscillates at 57.5–63.6mm, never settles) is the physical situation the gripper is in when the
-call is made: Test 3's arm is at its spawn pose with nothing nearby; Test 2's arm has just completed
-a real descent to the grasp pose, right at the object.
-
-That points away from a skills-code logic bug and back toward the physical contact question Test 2
-already raised but didn't resolve: something makes contact (or the gripper believes it does) at a
-gap far too wide for the box, symmetrically. The likeliest candidate is asymmetric contact — one
-pad touching the box (or something else near the descent path) off-centre, which a symmetric
-two-pad jaw-gap formula would not reveal, and which visually matches the earlier screenshot
-(the box appeared tilted against one finger, not centred between both pads).
-
-### Next test: watch what the fingers actually touch, during a real close
-
-Cheapest next step, no new tooling, still one variable: repeat the same `/sync_objects` → `/home` →
-`/pick` sequence from before, and this time have Koushik watch the Gazebo viewport directly during
-the `close_gripper` phase, reporting exactly what contacts what — which pad, whether the box tilts
-or is pushed, whether it's the box at all versus the table or tray edge. This decides whether the
-next step is a positioning/targeting question (asymmetric approach) or something else entirely.
-
-### Test 4: real `/pick` run, box-contact hypothesis ruled out
-
-First attempt (`bag_pick_close`) invalidated — Koushik paused Gazebo time mid-run, which aborted the
-action; not evidence of anything.
-
-Second attempt (`bag_pick_close_new`), full sequence, bag recording `/joint_states` + `/rosout`
-throughout. Koushik's account, matched directly against `skills.log`: pre-grasp candidates 1–3
-rejected (`MoveGroupInterface::plan() failed or timeout reached`, no visible arm motion — expected,
-a rejected candidate never executes), candidate 4 passed the full descent preflight and executed,
-descent executed, `close_gripper` started. Koushik watched it directly: **"It was not able to fully
-close and struggled to complete the closing motion. There was a gap between the gripper tips and the
-box."**
-
-The bag confirms it with numbers. `gripper_controller` accepted the close goal at wall time
-`1785603134.030266260` and was cancelled at `1785603144.030614125` — exactly `10.000s` later,
-matching `result_timeout_s`. `robotiq_85_left_knuckle_joint`, extracted directly from the bag:
-
-- `t=0 → 0.28s`: rises at exactly `0.500 rad/s` (the joint's rated limit) — free swing.
-- `t=0.28 → 0.89s`: still climbing, noisy but positive velocity, reaches a **peak of `0.30630 rad`
-  at `t=0.89s`**.
-- `t=0.90s`: sharp reversal — velocity flips to **`−0.305 rad/s`**, position drops to `~0.288 rad`
-  within 150 ms.
-- `t=1.0 → 10.0s`: wanders in a band of roughly **`0.18–0.31 rad`**, never settling, never
-  approaching `θ≈0.448 rad` (the angle the 40mm box requires).
-
-Converted with the same verified jaw-gap formula: **55.4–68.2 mm** across the wandering band. The
-box needs 40mm. This closely reproduces the *previous* `/pick` run's signature (that one wandered
-`0.221–0.286 rad`) — two separate runs landing in the same rough angular neighbourhood. Repeatable,
-not one-off noise.
-
-**This rules out the box as the obstruction — directly, by Koushik watching it, not by inference.**
-The earlier hypothesis in this file (asymmetric one-pad contact with the box) is wrong. Do not
-pursue it further without new contradictory evidence.
-
-### What's left
-
-Test 3 (previous entry): raw `GripperCommand` goal, arm untouched at its spawn pose, nothing nearby
-— closed cleanly to `0.79/0.8 rad`, no oscillation, `reached_goal: true`. These `/pick` runs, arm at
-the real grasp pose (top-down, wrist bent to descend to the table), oscillate every time in the same
-neighbourhood, well short of the box. The only variable that changed between the clean test and the
-broken ones is **the arm's pose/orientation when the gripper closes** — not the box (ruled out
-above), not `GripperCommander`'s call itself (Test 3 already proved that call works), not chance (it
-repeats).
-
-Plain physical candidate, not yet evidence: the five follower joints have no independent drive now
-(change 1 removed them from `<ros2_control>` entirely) — they move purely via
-`bullet_featherstone`'s native SDF mimic constraint, which has no explicit damping. At the grasp
-orientation the gripper hangs pointing down; at the isolated test's spawn pose it likely doesn't.
-Gravity loading a passive, undamped four-bar linkage differently in each orientation, while a
-P-only velocity servo drives the one actuated joint through it, could plausibly produce exactly this
-kind of position oscillation.
-
-### Next test, not yet run: same raw command, arm held at the real grasp pose
-
-Zero new setup. Right after the next `/pick` aborts at `close_gripper` (arm stays exactly where it
-is — the timeout path holds position, it does not reopen), send one more **raw** `GripperCommand`
-goal directly, bypassing `GripperCommander`/`skill_server_node` entirely — the same call Test 3
-already proved works cleanly, but this time with the arm already at the real grasp pose instead of
-its spawn pose.
-
-```bash
-# [CONTAINER] — run the same sync/home/pick sequence, keep the bag recording through it, let it abort naturally
-ros2 bag record -o ai/debug/visual-check/bag_grasp_pose_direct /joint_states /rosout
-# (start this before /sync_objects, same as before)
-
-# [CONTAINER] — immediately after the abort, arm untouched, same bag still recording:
-ros2 action send_goal /gripper_controller/gripper_cmd control_msgs/action/GripperCommand \
-  "{command: {position: 0.8, max_effort: 40.0}}" --feedback \
-  2>&1 | tee ai/debug/visual-check/gripper_at_grasp_pose.log
-```
-
-- If it **also oscillates** in the same 55–68mm band: confirms the arm's pose/orientation is the
-  variable, not the pick sequence or the box. Next step: investigate gravity-loading of the
-  undamped mimic linkage at that orientation.
-- If it **closes cleanly**: the failure is specific to something about `/pick`'s own close call at
-  that moment (timing right after descent, residual arm velocity) rather than pose alone — different
-  next step, would need to look at exactly what differs at that moment.
-
-### Test 5: the stall verdict doesn't stop the drive
-
-Koushik ran the test above. Real `/pick` run: candidate 4 selected, descent aligned correctly with
-the box (visually confirmed). `gripper_controller` accepted the close goal at wall time
-`1785604078.089999460`, cancelled at `1785604088.090379047` — `10.00038s` later, matching
-`result_timeout_s: 10.0` as always.
-
-Before running the follow-up command, Koushik watched the gripper directly and **photographed it**:
-one jaw visibly closing, the other not. A real, directly-observed asymmetry — not inferred from the
-driven joint's angle.
-
-He then sent the raw `GripperCommand` goal three times, arm untouched throughout:
-
-| goal | accepted (wall) | result position | stalled | reached_goal |
-|---|---|---|---|---|
-| 1 | `1785604138.355702640` | `0.167815` | true | false |
-| 2 | `1785604145.737113093` | `0.168612` | true | false |
-| 3 | `1785604149.289280008` | `0.168666` | true | false |
-
-All three within `0.001 rad` of each other. Then, stopping there (Ctrl-C on the CLI, nothing new
-sent): **"After that, the gripper started moving again. It dropped the box, continued trying to
-hold it, and only then did the gripper fully close."**
-
-**The mechanism, verified directly against the installed controller source**
-(`/opt/ros/jazzy/include/gripper_action_controller/gripper_controllers/gripper_action_controller_impl.hpp`),
-`update()`, quoted in full:
+**`GripperActionController::update()` — `stalled` means "stopped watching," not "stopped
+moving."** Verified directly against the installed source
+(`/opt/ros/jazzy/include/gripper_action_controller/gripper_controllers/gripper_action_controller_impl.hpp`):
 
 ```cpp
 controller_interface::return_type GripperActionController<HardwareInterface>::update(
@@ -307,348 +112,140 @@ controller_interface::return_type GripperActionController<HardwareInterface>::up
 }
 ```
 
-`check_for_success()` marks the goal `SUCCEEDED` (`reached_goal`), `SUCCEEDED` with `stalled: true`
-(only because `allow_stalling: true`), or `ABORTED` — and in every case clears `rt_active_goal_`, so
-no more results are ever reported for that goal. **But it never touches `command_struct_rt_.position_`,
-and the `updateCommand()` call three lines below runs unconditionally, every cycle, regardless of
-whether an active goal exists.** Only two things ever change `command_struct_rt_.position_`: a new
-goal being accepted, or a cancellation (which calls `set_hold_position()`, explicitly freezing the
-target at the current position). **A stalled-but-`SUCCEEDED` result does neither.** The joint keeps
-being driven toward the original target indefinitely, in the background, with no client watching,
-until a cancel or a new goal changes it.
+`check_for_success()` marks the goal `SUCCEEDED` (`reached_goal`), `SUCCEEDED` with
+`stalled: true` (only because `allow_stalling: true`), or `ABORTED` — and in every case
+clears the active goal, so no more *results* are ever reported for it. It never touches
+`command_struct_rt_.position_`, and `updateCommand()` three lines below runs
+unconditionally, every cycle, regardless of whether an active goal exists. Only two things
+ever change that stored target: a new goal being accepted, or a cancellation, which calls
+`set_hold_position()` — explicitly freezing the target at the current position. A
+stalled-or-reached `SUCCEEDED` result does neither. The joint keeps being driven toward
+whatever the target was, indefinitely, with no client watching, until a cancel or a new
+goal changes it. This is why every `stalled: true` verdict logged before Iteration 12 was
+read as "settled contact, safe to proceed" when it only ever meant "the controller stopped
+watching."
 
-This reconciles everything above. The three repeated goals landed at nearly the same position
-because the joint was never actually stopped between them — the one thing that does freeze it
-(cancel) happened once, at the very start, and never again. Every `stalled: true` after that meant
-"the controller stopped watching," not "the gripper stopped moving." When Koushik stopped sending
-commands entirely, the still-live drive from the last goal (still targeting `0.8`) kept pushing —
-enough, eventually, to physically displace the box — matching his account exactly, and matching Test
-3's clean-close behavior once nothing remains in the way.
+**`gz_ros2_control`'s position→velocity adapter is a proportional loop with no upper
+bound.** `velocity_sp = position_proportional_gain × position_error × update_rate`. The
+never-overridden default gain is `0.1`, `update_rate: 100` — gain `10` on the driven
+joint. The mimic drive for follower joints runs the equivalent loop at gain `100`
+(`velocity_sp = -(position_follower - position_driven × multiplier) × update_rate`, no
+separate proportional term) — ten times stiffer than the joint it tracks. Neither loop
+caps its output at the joint's own velocity rating; a large position error simply asks for
+whatever multiple of that rating the arithmetic produces.
 
-**Why this matters beyond this one run:** every `stalled: true` result logged in this RCA since
-Iteration 1b was read as "settled contact, safe to proceed to retreat." That reading is wrong. It
-means only that reported velocity was briefly under threshold — the joint is not held, not stopped,
-and resumes pursuing the original target the moment nothing continues to resist it. This is a better
-candidate for the old "box held weakly, dropped during retreat" pattern than anything considered
-before: the gripper was never actually stopped, it kept trying to close through the object the whole
-time.
+**Harmonic hands a mimic joint to two governors where Fortress hands it to one.** sdformat
+14 (Gazebo Harmonic) converts a URDF `<mimic>` tag into a real SDF `<axis><mimic>`
+constraint; Fortress-era sdformat does not generate one at all. `bullet_featherstone`
+exports the constraint feature (`JointFeatures::SetJointMimicConstraint`, confirmed against
+the installed plugin); `dart` exports zero mimic-constraint symbols (checked with both
+`strings` and `nm -D`, `337` hits for `bullet_featherstone`, `0` for `dartsim`).
+`gz_ros2_control` separately auto-detects the same URDF tag via `hardware_interface`'s own
+parser and runs its own control-cycle mimic drive on any joint listed in `<ros2_control>`
+at all — state-interface-only does not exempt it. Under Harmonic + `bullet_featherstone`, a
+follower listed in `<ros2_control>` therefore gets two independent enforcers unless it is
+removed from `<ros2_control>` entirely (Iteration 8) or the native constraint is absent
+(true under `dart`, which is why the followers can safely stay in `<ros2_control>` again
+under the Iteration 12 engine switch). This is also why `arm_stack`'s
+Humble/Fortress/`ign_ros2_control` `<ros2_control>` shape does not transfer: it only ever
+had one enforcer to begin with.
 
-**What this does not yet establish:** whether the photographed one-jaw asymmetry is its own separate
-defect (the mimic constraint not holding symmetry under real load) or a downstream effect of the
-persistent drive fighting uneven box contact; and why the parked position clusters so consistently
-near `~0.17 rad` across very different code states (Iteration 4 recorded `0.174928 rad` months ago
-under a completely different configuration).
+**The jaw-gap closed form is the measurement basis for the whole fix**, now living in
+`helpers.hpp`/`.cpp` (`jaw_gap_m`/`knuckle_angle_for_gap_m`) instead of only in this file:
 
-### Next test, not yet run: confirm the persistent drive in complete isolation
-
-One goal, one result, then **nothing** — no new goal, no cancel — just watch `/joint_states`
-afterward. If position keeps changing with zero commands issued after the terminal result, that
-directly confirms the mechanism above, isolated from any effect of sending three goals in a row.
-
-```bash
-# [CONTAINER] — run the same sync/home/pick sequence, let it abort naturally as before
-
-# [CONTAINER] — start a bag before the goal below, covering at least 60s
-cd /sorting_arm_ws
-ros2 bag record -o ai/debug/visual-check/bag_persistent_drive /joint_states /rosout
-
-# [CONTAINER] — send exactly ONE goal, then send nothing else at all
-ros2 action send_goal /gripper_controller/gripper_cmd control_msgs/action/GripperCommand \
-  "{command: {position: 0.8, max_effort: 40.0}}" --feedback \
-  2>&1 | tee ai/debug/visual-check/single_goal_then_watch.log
+```
+gap(th) = 2 × (c + a·cos(th) − b·sin(th)),  a = 0.0371575, b = 0.04342168, c = 0.03060114 − 0.02526
 ```
 
-Once that one goal's result prints, do not send anything else. Let the bag keep recording for
-another full minute with the terminal idle, then Ctrl-C the bag.
+Endpoint-checked against the spec: `gap(0) = 85.0 mm` (rated open), `gap(0.8) ≈ 0.15 mm`
+(fully closed). The inverse is exact via the `R·cos(th+phi)` identity
+(`R = hypot(a,b)`, `phi = atan2(b,a)`), rejecting an out-of-range gap rather than clamping
+it. At the 40 mm cube's contact angle (`th = 0.4484 rad`), local sensitivity is
+`dgap/dth ≈ -0.1105 m/rad` — 1 mm of gap is 9.05 mrad of knuckle. That sensitivity is what
+bounds `squeeze_depth_m`'s usable window (`1.10–5.52 mm`, mid-point `0.003 m`) and derives
+`capture_tolerance_m` (`0.005 m`, ≈0.55 mm of the allowed 5 mrad symmetry residual, the
+remainder budgeted for contact penetration and solver slop).
 
-### Test 6: a separate goal closed it, then it shook
+**The `dart`-side periodic velocity artifact is real, measured, and still unexplained.**
+During sustained rigid contact, the driven joint's reported velocity spikes to roughly
+`+0.15 rad/s` every 0.3–1.4 sim-seconds, each spike resetting the controller's 1.0 s
+quiet-window timer. On the passing Gate C run the longest quiet stretch measured `0.98 s`
+against the `1.0 s` requirement — missed by 20 ms. Converting each `/joint_states` sample's
+own sim-time stamp (not wall-clock arrival time) gives an effective real-time factor of
+`0.848` for that window — far healthier than Iteration 7's `0.09` collapse under
+`bullet_featherstone`, but still below 1.0. This is a materially different signature from
+Iteration 6's `bullet_featherstone` finding (chaotic, both-signed, position frozen); this
+one is single-signed and semi-regular, consistent with a periodic contact-solver
+re-evaluation under `dart`'s LCP-based solver, though the exact mechanism isn't pinned down
+further — nothing currently bridged (no contact-force topic) localises it more precisely
+than "engine-side, tied to sustained rigid contact."
 
-Koushik ran the sequence above once (not the repeated-goal version). Timeline, cross-checked across
-three terminals' timestamps, all consistent:
+## Ruled out — do not repeat without new contradictory evidence
 
-| wall time | event |
-|---|---|
-| `...6049.053` | `open_gripper` accepted (`/pick` start) |
-| `...6049.104 → 6054.107` | pre-grasp candidate 1: OMPL `TIMED_OUT` at 5.0s, rejected |
-| `...6054.109 → 6054.159` | candidate 2: plan computed in ~50ms |
-| `...6054.163 → 6054.167` | candidate 2 Cartesian descent preflight: 26 points, 100% coverage — pass |
-| `...6054.177 → 6070.377` | pre-grasp move executes (16.2s) |
-| `...6070.389 → 6073.737` | descent move executes (3.35s) |
-| `...6073.758` | `close_gripper` goal accepted (`/pick`'s own close call) |
-| `...6083.759` (+10.0003s) | client cancels — matches `result_timeout_s: 10.0` exactly, same as every prior run |
-| `...6105.287` (+21.53s) | Koushik's separate, manually-typed `GripperCommand` goal accepted |
-| (result) | `position: 0.795649`, `stalled: false`, **`reached_goal: true`**, `SUCCEEDED` |
+- **The UR5 reference's gripper parameters are not a valid comparison.** Its close is
+  fire-and-forget; this project waits for and verifies a `GripperCommand` result.
+- **`max_effort` is inert** on this position-only controller interface — `move_group` logs
+  "will command a max effort of: 0" every run.
+- **Raising the knuckle's 50 N·m effort limit or `position_proportional_gain`** adds no
+  usable squeeze — the motor already saturates against the object whenever contact stops
+  it short of the commanded target.
+- **Cube mass and friction** already matched the working reference class of values before
+  either was ever the active line of investigation.
+- **Mimic-joint wiring, the physics engine, and the simulation step size** each matched the
+  established controller contract at multiple points in this investigation; each match
+  reproduced the same failure, ruling out the match itself as a sufficient fix.
+- **MoveIt, IK, grasp-pose generation, and approach execution** can reach the object;
+  pre-grasp candidate rejections before a later valid candidate are separate from the
+  contact instability.
+- **MoveIt's `attach()` does not physically carry the Gazebo object** — it only updates the
+  planning scene. A real simulated pad contact has to hold the object through retreat.
+- **One pad contacting the box asymmetrically** (versus something else near the descent
+  path) was directly ruled out by watching the Gazebo viewport during a real `/pick` run:
+  the arm never got within contact range of anything at the time.
+- **Fingertip friction (`100000`, then `5`) as the fix for chatter** — the pads were
+  15.1 mm from the cube in every run that claimed to test either value (Iteration 7);
+  neither was actually exercised under real contact until the Iteration 12/13 passing runs.
+- **Matching upstream `robotiq_description`'s follower-joint shape exactly** reproduced the
+  identical failure signature (Iteration 5) and separately introduced an
+  unconstrained-linkage regression that Iteration 7 had to correct.
+- **Copying `arm_stack`'s `<ros2_control>` shape onto this stack** does not reproduce its
+  result — see "Harmonic hands a mimic joint to two governors" above. `arm_stack` also
+  never verifies its grasp at all; its `close_slowly()` treats any step timeout as contact
+  and never cancels the last goal, so it isn't a valid target to copy for a project whose
+  contract is verification.
+- **Opening `grasp_offset_m` for more table clearance without new targeting evidence**
+  (Iteration 10) made reachability worse, by a mechanism this RCA never explained; reverted
+  and confirmed reproducible at the original value.
+- **Tuning `stall_velocity_threshold` to any single value** cannot separate settled contact
+  from engine noise — Iteration 6 measured spurious velocity spikes the same order of
+  magnitude as genuine free-swing motion (`0.37 rad/s`); Iteration 13 confirmed this still
+  holds under `dart`.
 
-Error from target: `0.8 − 0.795649 = 0.00435 rad`, genuinely inside `goal_tolerance: 0.01` — a real
-`reached_goal`, not a stall. Matches Koushik's account exactly: the separate command "pushed the box
-out of the way... then fully closed... command reported success." **Then: "After the gripper
-closed, it started shaking violently."**
+## Open
 
-### The mechanism, verified directly against the installed controller source
-
-`/opt/ros/jazzy/include/gripper_action_controller/gripper_controllers/gripper_action_controller_impl.hpp`,
-`update()`, quoted in full:
-
-```cpp
-controller_interface::return_type GripperActionController<HardwareInterface>::update(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
-{
-  command_struct_rt_ = *(command_.readFromRT());
-  const double current_position = joint_position_state_interface_->get().get_optional().value();
-  const double current_velocity = joint_velocity_state_interface_->get().get_optional().value();
-  const double error_position = command_struct_rt_.position_ - current_position;
-  const double error_velocity = -current_velocity;
-
-  check_for_success(get_node()->now(), error_position, current_position, current_velocity);
-
-  // Hardware interface adapter: Generate and send commands
-  computed_command_ = hw_iface_adapter_.updateCommand(
-    command_struct_rt_.position_, 0.0, error_position, error_velocity,
-    command_struct_rt_.max_effort_);
-  return controller_interface::return_type::OK;
-}
-```
-
-`check_for_success()` marks the goal `SUCCEEDED` (`reached_goal`), `SUCCEEDED` with `stalled: true`
-(only because `allow_stalling: true`), or `ABORTED` — and in every case clears the active goal, so
-no more *results* are ever reported for it. **It never touches `command_struct_rt_.position_`, and
-the `updateCommand()` call three lines below runs unconditionally, every cycle, regardless of
-whether an active goal exists.** Only two things ever change that target: a new goal being accepted,
-or a cancellation, which calls `set_hold_position()` (also re-verified directly,
-`gripper_action_controller_impl.hpp:123-153`) — explicitly freezing the target at the current
-position. **A stalled- or reached-`SUCCEEDED` result does neither.** The joint keeps being driven
-toward whatever the target was, indefinitely, in the background, with no client watching, until a
-cancel or a new goal changes it.
-
-This explains Test 6 end to end: the joint was never actually stopped between the original `/pick`
-close call and Koushik's separate goal except by the one cancel (which does freeze it) — everything
-after that cancel, including the separate goal's own `reached_goal: true`, leaves the target pinned
-wherever it landed, still being driven toward it in the background afterward too. Every `stalled:
-true` this whole RCA has ever logged, back to Iteration 1b, meant "the controller stopped watching,"
-never "the gripper stopped moving."
-
-## Fix: `GripperCommander::close()` now holds in place on a genuine stall
-
-`src/sorting_arm_skills/src/gripper_commander.cpp`, `close()`, before this fix (the code that ran in
-every test above):
-
-```cpp
-if (result.stalled) {
-  return GraspOutcome{true, true, 0, "stalled at position " + std::to_string(result.position)};
-}
-```
-
-It saw `stalled: true` and returned, treating that as "captured, safe to proceed to attach and
-retreat" — without ever telling the controller to stop. Per the mechanism above, the joint kept being
-driven toward `close_position_` (`0.8`) the whole time `pick_server.cpp` went on to attach and
-retreat. Direct candidate for the historical "held weakly, dropped during retreat" pattern going back
-to Iteration 1b/4.
-
-**Change:** the moment `result.stalled` is true, send one more `GripperCommand` goal targeting
-`result.position` — the joint's own just-measured position from the stalled result itself, no new
-subscription needed — instead of leaving `close_position_` as the standing target. A goal whose
-target is (nearly) the current position resolves via the `reached_goal` branch almost immediately,
-which is the only way this controller design can actually be told "stop pushing, hold here."
-
-```cpp
-if (result.stalled) {
-  // stalled==true only means the controller stopped watching — update() keeps driving
-  // toward close_position_ regardless, so we re-target the stall position or it keeps
-  // pushing on whatever it just hit
-  GripperCommandAction::Result hold_result;
-  const auto held = send_goal(result.position, "close_gripper", hold_result);
-  if (!held.ok) {
-    return GraspOutcome{false, false, held.native_code, held.message};
-  }
-  return GraspOutcome{true, true, 0, "stalled at position " + std::to_string(result.position)};
-}
-```
-
-No other change. `.hpp` untouched — reuses the existing `send_goal()` as-is. Uncommitted, per the
-standing rule: not committed until runtime-verified.
-
-**Build:** `cbuild` — clean.
-
-### Test 7: the fix is correct but wasn't exercised — the dominant failure is upstream of it
-
-Koushik ran the same `/sync_objects` → `/home` → `/pick` sequence. Result: identical to every
-pre-fix run — `"gripper result timed out"`, `ABORTED`. `gripper_controller` log: only **one** goal
-accepted before the cancel (`Received & accepted new action goal` → `Got request to cancel goal`,
-`10.000338s` apart). The fix's new code never ran, because it only executes after
-`send_goal(close_position_, ...)` returns with a *resolved* `stalled: true` — and here, `send_goal()`
-itself hit its own 10-second client-side wait first (the timeout branch, not the stalled branch).
-The controller never produced any terminal verdict at all in this run — consistent with
-`stall_velocity_threshold: 0.02` needing a full continuous 1.0s quiet window that this run never
-produced.
-
-Koushik's account: **"the entire gripper appeared to twist while continuously trying to close... it
-never completed the grasp... After the action aborted... it continued trying to grasp the box even
-after the action had already been aborted."** Photos: one finger visibly much closer to the box, the
-other farther away — the same asymmetry photographed in the previous test, now observed twice,
-independently.
-
-**The fix stays — it's correct for the case it targets (a controller that does resolve a stall) and
-is still needed for that case.** It just isn't the dominant failure mode. The dominant failure is a
-sustained oscillation/twist that never produces a clean 1.0s quiet window at all within 10 seconds,
-which no amount of "what to do after a stall" logic can touch, because the controller never gets
-there.
-
-### Why does `arm_stack` manage this with the ostensibly same gripper and the same action?
-
-Koushik asked directly: `arm_stack` uses the same Robotiq 2F-85, the same
-`position_controllers/GripperActionController`, the same `control_msgs/action/GripperCommand` — so
-why does its pick-and-place work while ours doesn't?
-
-Re-checked against the earlier full trace of `arm_stack`'s gripper path
-(`pick_place_dynamic.cpp:278-383`, quoted in full earlier in this investigation): **`arm_stack` never
-verifies the grasp at all.** Its `send_command()` branches only on
-`result.code == rclcpp_action::ResultCode::SUCCEEDED` — it reads `stalled` and `reached_goal` only
-to log them, never to decide anything. Its `close_slowly()` ladder sends steps toward
-`grasp_close_position: 0.62` — not the mechanical limit (`0.8` here) — in `0.04` rad increments, each
-with only a **1500ms** result timeout and `timeout_means_contact = true`: if a step doesn't resolve
-in 1.5 seconds, `arm_stack` treats that timeout *itself* as "we've made contact," and moves on
-immediately — critically, **without cancelling that goal**. The last, "contacted" step is left
-running, still targeting its own modest position (well short of full closure), continuously applying
-gentle pressure through attach and retreat, simply because nothing ever told it to stop.
-
-So `arm_stack`'s grasp isn't more correctly *verified* than ours — it's not verified at all. It works
-because its contract is shallow and forgiving: a short timeout stands in for "contact," a partial
-target stands in for "closed enough," and leaving the goal alone (not cancelling) happens to keep
-gentle pressure on the object by accident. This project's contract, since Iteration 11, is
-deliberately stricter — a real settled gap measured against the object's actual width — which is a
-harder target to hit given what this controller's `stalled` flag actually is (not a stop, just a
-stopped report) and what real four-bar contact dynamics do inside a 10-second window. This was
-already noted in `Causes ruled out` above ("Its close is fire-and-forget..."); Test 7 is the direct,
-mechanism-level version of that same fact.
-
-### Test 8: state-only follower telemetry exposes the physical asymmetry
-
-Koushik chose to observe the linkage before changing the grasp contract. The five follower joints
-were restored to the `<ros2_control>` resource declaration with position and velocity state
-interfaces only. Each has `mimic="false"`, so the state is published without activating
-`gz_ros2_control`'s second mimic drive. No geometry, controller setting, motion target, or skills
-logic changed.
-
-The runtime gate passed:
-
-- `grep -c "is mimicking joint" ai/debug/followers/sim.log` returned `0`;
-- all five followers exposed position and velocity state interfaces and no command interfaces; and
-- `joint_state_broadcaster`, `arm_controller`, and `gripper_controller` were all active.
-
-The `/pick` run selected pre-grasp candidate 3 after candidates 1 and 2 timed out. Pre-grasp and
-descent both executed successfully. `gripper_controller` accepted the close goal at
-`1785609736.966822115` and received the client cancellation at `1785609746.967158734`, exactly
-`10.000337 s` later. `/pick` then returned `"gripper result timed out"` with status `ABORTED`.
-
-`ai/debug/followers/bag_followers2` contains 1,000 `/joint_states` samples in that close window. The
-driven left knuckle reached a maximum of `0.307114 rad` during the first second. By three seconds it
-had physically settled into `0.198320..0.199020 rad` and remained there until cancellation. This
-corrects the earlier visual interpretation: the driven joint's position is not continuously
-oscillating for the full timeout.
-
-Its reported velocity is still unstable. From three seconds until cancellation it ranged from
-`-0.126517` to `+0.172595 rad/s`. The longest continuous interval with
-`|velocity| < stall_velocity_threshold` (`0.02 rad/s`) was only `0.099878 s`. The controller needs
-`1.0 s`, so it could not issue a stall result even though the measured position was almost fixed.
-This directly explains the missing terminal verdict and the ten-second client timeout.
-
-The follower positions stayed bounded, so this is not the Iteration 7 double-drive signature that
-grew to `0.149 rad`. They did not maintain the ideal mimic relation exactly either. At the final
-sample, the error from `follower = multiplier * left_knuckle` was:
-
-| Follower | Final error (rad) |
-|---|---:|
-| `robotiq_85_right_knuckle_joint` | `0.012742` |
-| `robotiq_85_left_inner_knuckle_joint` | `-0.004604` |
-| `robotiq_85_right_inner_knuckle_joint` | `0.002231` |
-| `robotiq_85_left_finger_tip_joint` | `0.066098` |
-| `robotiq_85_right_finger_tip_joint` | `-0.009538` |
-
-The strongest defect is therefore the left fingertip follower. At the final sample, the absolute
-left/right fingertip joint-angle difference was `0.056560 rad`. Combining each knuckle angle with
-its fingertip angle gives a `0.062894 rad` (`3.604 deg`) pad-orientation mismatch. This is direct
-physical telemetry for the twist Koushik photographed; it is not the analytic, always-symmetric TF
-model.
-
-Using the measured knuckle and fingertip states in the gripper's own linkage geometry gives a
-central pad gap of `67.053..67.119 mm` after the position settled, ending at `67.085 mm`. Even the
-smallest gap calculated across the pad's vertical collision-mesh span at the final sample is about
-`63.88 mm`. The box is `40 mm` wide, so the pads remain at least `23.88 mm` too far apart for box
-contact. This confirms Koushik's visual report that air remained between the gripper and the box.
-The bag does not contain the simulated box pose, so it cannot split that clearance into an exact
-left-pad-to-box distance and right-pad-to-box distance.
-
-The bag continued for `22.37 s` after cancellation. The driven joint moved from about `0.1987 rad`
-to `0.1656 rad` in the first second and ended at `0.1742 rad`. Visible shaking may stop after the
-abort, but the physical joint does not remain at its cancellation-time position.
-
-No next behavior, geometry, or tuning change is selected from this result yet. The first new fact to
-explain is why a nearly stationary driven position reports velocity spikes large enough to defeat
-the controller's quiet-window test. The bounded but persistent left-fingertip constraint error is a
-separate measured asymmetry that must not be hidden by changing the stall threshold.
-
-### Test 9: bounded raw goals stall in open air after the failed pick
-
-The next probe asked `GripperActionController` directly for positions `0.20`, `0.25`, `0.30`,
-`0.35`, `0.40`, `0.44`, and `0.457 rad`, each with `max_effort: 40.0`. The instrumentation gate
-still passed: there were zero `is mimicking joint` lines, the five followers remained state-only,
-and all three controllers were active. The bag and logs are in
-`ai/debug/controller_verdict_probe/`.
-
-The probe first ran the normal `/pick`, which again reached `close_gripper` and timed out. The raw
-goals therefore started from the physical state left behind by that close-goal cancellation. Every
-raw goal returned action status `SUCCEEDED`, but the controller result was `stalled: true` and
-`reached_goal: false`:
-
-| Command (rad) | Reported position (rad) |
-|---:|---:|
-| `0.20` | `0.169698` |
-| `0.25` | `0.168166` |
-| `0.30` | `0.168604` |
-| `0.35` | `0.168789` |
-| `0.40` | `0.168916` |
-| `0.44` | `0.169005` |
-| `0.457` | `0.169061` |
-
-The first command was only about `0.031 rad` away from the starting position. With the installed
-`gz_ros2_control` position gain and 100 Hz update rate, that asks for about `0.31 rad/s`, below the
-joint's `0.5 rad/s` velocity limit. It still failed to advance. This disproves the narrower
-hypothesis that only the original large close command and its velocity saturation cause the jam.
-
-After the `0.25 rad` command, the driven joint's measured velocity stayed roughly within
-`-0.003..+0.003 rad/s`. The controller's stall detector is therefore behaving consistently in this
-probe: the joint really is nearly stationary for its one-second quiet window. The problem is the
-physical meaning of that result. The gripper is stalled in air, so `stalled: true` is not evidence
-that it captured the box.
-
-The measured central pad gap stayed near `68.7 mm`; across the stabilized raw-goal windows it ranged
-from about `68.662` to `68.778 mm`. The box is `40 mm` wide. At the last sample, the left and right
-fingertip collision meshes were separated from the box by at least `13.1 mm` and `10.7 mm` along the
-closing axis. Their lowest collision-mesh vertices were `10 mm` above the table. This rules out the
-box and table as the contacts stopping these goals.
-
-The linkage was still asymmetric at the final sample. The follower errors from the ideal mimic
-relation were `-0.014752`, `+0.000488`, `-0.006325`, `+0.034565`, and `-0.045287 rad` in right
-knuckle, left inner knuckle, right inner knuckle, left fingertip, and right fingertip order. The pad
-orientation mismatch was `5.420 deg`.
-
-This test does not yet prove that the same bounded sequence fails from a fresh simulation state. It
-proves that bounded goals cannot recover the linkage state left by the failed close and
-cancellation. The next diagnostic must run a bounded raw-goal ladder from the freshly opened
-gripper, before any full close or cancellation. That separates a general native mimic-linkage jam
-from a bad post-cancellation equilibrium. Until that distinction is measured, changing the grasp
-success contract or adding lift would hide the first false physical contract.
+- **The `dart`-side periodic `+0.15 rad/s` velocity artifact** during sustained contact —
+  measured, unexplained beyond "engine-side, tied to rigid contact." It no longer blocks
+  `/pick` (verification no longer depends on the controller resolving it), but it would
+  block any future consumer of this controller's own terminal result.
+- **The SRDF's `gripper_close` named state** (`sorting_arm.srdf`) still specifies `0.8` — a
+  MoveIt named state the skills close path has never used and still does not. Left as-is;
+  not part of this RCA's scope.
 
 ## Reproduction
 
-Koushik uses the same sequence for every observation:
+1. Launch the simulation (`sim.launch.xml gui:=true`, or `app.launch.xml` for the whole
+   cell in one command — see `sorting_arm_bringup`).
+2. Start `skill_server_node` with `use_sim_time:=true` and the installed `skills.yaml`
+   (already true under `app.launch.xml`).
+3. `/sync_objects`, then `/home`, then `/pick` for `red_box_1` with feedback enabled.
 
-1. Launch the simulation with `gui:=true`.
-2. Start `skill_server_node` with `use_sim_time:=true` and the installed `skills.yaml`.
-3. Call `/sync_objects`.
-4. send the robot to `/home`.
-5. Send `/pick` for `red_box_1` with feedback enabled.
+## Related
 
+<<<<<<< Updated upstream
+- `docs/project/decisions.md` D24 — the `dart` physics engine choice.
+- `docs/rca/gripper-controller-configuration.md` — `GripperActionController`'s full
+  declared parameter set, verified against the installed generated header.
+=======
 The successful `/home` action is not part of this incident. Pre-grasp planning can reject several
 IK candidates, but the latest supplied log selected candidate 4 of 5 after a complete Cartesian
 descent preflight. Those rejected candidates did not cause the latest contact failure.
@@ -1295,360 +892,121 @@ If those checks pass except for the retreat hold, friction and grip force become
 again. Until then, do not retune them: this iteration changes the verdict and cancellation mechanisms
 that prevented a valid grasp from reaching retreat.
 
-## Iteration 12: close to the object, not the hard stop, and measure the jaw instead of trusting the controller
+### Follow-up: the free-space approach broke the velocity bound
 
-The working tree at the start of this iteration was `a38f873` (Iteration 11's ladder code is on
-`origin`, five commits ahead, and was not present here) with two uncommitted changes applied on top:
-the Iteration 5/7/8 description edits (fingertip friction, follower joint limits, five followers
-state-only with `mimic="false"`), and an unverified edit to `GripperCommander::close()` that
-re-targeted the joint to `result.position` on a stall. This iteration replaces all of that in one
-change, on Koushik's explicit direction to stop iterating one variable at a time. The instruction
-carries a cost this entry is written to offset: a single failed run after this point has to be
-diagnostic on its own, so every measurement below is logged, not just eyeballed.
+The Iteration 11 ladder bounded each later target change to 0.05 rad, but the first approach still
+sent one direct command from the measured 0 rad open position to 0.357 rad. That command violated
+the same velocity invariant the ladder was meant to enforce. Jazzy `gz_ros2_control` converts a
+position error to a velocity command using the configured proportional gain and controller update
+rate. With the installed default gain of 0.1 and this project's 100 Hz update rate, the first command
+requested `0.1 * 0.357 * 100 = 3.57 rad/s` from a joint limited to 0.5 rad/s. Even at the recorded
+0.287 rad peak, the remaining error requested about 0.70 rad/s. The ten-second timeout was therefore
+downstream evidence, not the first failure.
 
-### The mechanism this iteration actually fixes
+`GripperCommander::close()` now starts from a fresh measured knuckle position and uses at most
+`close_step_rad` for the whole approach. A `must_reach` step is accepted only when the action result
+is `SUCCEEDED`, `reached_goal=true`, and `stalled=false`. Its active timeout goal is cancelled and the
+approach fails. A `stalled=true` result also fails, but it is already terminal in Jazzy; after a
+terminal result, `rclcpp_action` removes the goal handle and cannot cancel it. After the 50 mm target
+is reached, `contact_allowed` steps retain the Iteration 11 behavior: no result before
+`step_timeout_s` means contact, that goal remains active, and the bounded squeeze goal preempts it.
+Every next target uses the previous controller result position. Final approach acceptance uses
+`reached_goal`, not exact equality between measured floating-point positions.
 
-`gripper.close_position: 0.8` is the knuckle's URDF upper limit. A 40 mm cube stops the knuckle at
-`0.4484 rad` (closed form below). `gz_ros2_control` converts a position command to a velocity
-setpoint as `joint_velocity = position_proportional_gain × position_error × update_rate`; with the
-never-overridden default gain `0.1` and `update_rate: 100`, the blocked `0.3516 rad` error asked for
-**3.52 rad/s from a joint rated 0.5 rad/s**, continuously, because nothing in the controller ever
-reduces `command_struct_rt_.position_` short of a new goal or a cancel. Iteration 11 stated this
-arithmetic and did not act on it. This iteration does: `GripperCommander::close(double
-object_width_m)` now targets the knuckle angle for `object_width_m − squeeze_depth_m_`, never the
-hard stop.
+Each approach and close step now logs measured start, target, delta, calculated target gap, and the
+terminal `stalled`/`reached_goal` fields when a result exists. Geometry, friction, mimic wiring,
+controller type, gain, timeouts, squeeze size, and measured-gap capture verdict are unchanged.
 
-**The correction to the persistence claim, stated precisely because an earlier draft of this
-iteration got it wrong.** After a terminal action result, the *action goal* is over — nothing about
-it stays "live," and no action feedback exists to keep alive (`GripperActionController` never
-publishes feedback, confirmed in Iteration 7). What persists is the controller's own stored
-`command_struct_rt_.position_`, which `updateCommand()` keeps applying every control cycle
-regardless of goal state (verified against the installed controller source, Test 5/6 above). So the
-requirement this iteration actually implements is narrow: after a successful capture, send no new
-goal and issue no cancel, because either replaces that stored target with the measured position and
-drives the residual error to zero. `send_goal()`'s result-timeout path keeps its
-`async_cancel_goal()` — that is a genuine failure stop, on a path where nothing was captured to
-hold.
+Runtime behavior remains unverified. Koushik's first run of this follow-up never entered
+`GripperCommander::close()`. `open_gripper` succeeded, candidate 1 found a pre-grasp plan but its
+Cartesian descent covered only 96% against the required 99%, and candidates 2–5 each reached the
+existing five-second OMPL timeout. `/pick` aborted at `descend_preflight`; no `close_gripper started`
+or `must_reach` log exists. This is the same pre-grasp failure class recorded in Iteration 10, before
+the bounded-approach change. The gripper change therefore has no runtime verdict from this attempt.
 
-**What this does not claim.** `max_effort: 40.0` is inert on this position command interface —
-`skills.yaml`'s own comment already said so, and `move_group` logs "will command a max effort of:
-0" every run (Iteration 7). Nothing here commands a specific gripping force. What persists is a
-residual *position* error that the position→velocity adapter turns into a continuing closure
-command; whatever contact force results from that is an emergent property of the physics contact
-model, not a commanded quantity.
+Diagnosis-only logging now records both target poses, each planned candidate's terminal arm joint
+positions, exact Cartesian fraction and point count, native MoveIt codes, and every candidate outcome
+in the final action detail. It changes no planner, target, collision, timeout, or gripper behavior.
+The saved `skills.log` and `sim.log` under `ai/debug/iteration_12/runtime` contain the evidence above;
+`runtime.log` is empty because the action command and its `tee` pipeline were entered as separate
+shell commands, so it is not evidence.
 
-### `squeeze_depth_m`: a derived window, not a guessed constant
+A second run passed the complete descent preflight with candidate 2 and reached `close_gripper`, but
+the first approach step still did not run. The new code rejected the fresh knuckle sample because it
+required `position >= open_position` exactly. The open action had succeeded at 0.000060 rad; a live
+`/joint_states` sample immediately after the failure reported `-2.480390615e-10 rad`. That tiny
+negative value is Gazebo boundary residue around the zero-radian lower limit, not an unsafe gripper
+state. The strict check was added by this follow-up and was not part of the accepted contract.
 
-The jaw-gap closed form, endpoint-checked against the spec (`gap(0)=85.0mm`, `gap(0.8)=0.16mm`),
-now lives in code as `jaw_gap_m()`/`knuckle_angle_for_gap_m()` in `helpers.hpp`/`.cpp` instead of
-only in this file's prose:
+Measured positions are now accepted down to `open_position - close_step_rad`, the lowest state from
+which one bounded step still produces a legal target at or above `open_position`. The measured value
+is neither clamped nor replaced, so the next target remains based on the real result position and its
+delta remains at most `close_step_rad`. Non-finite values, values more than one step below open, and
+values above `close_position` still fail with the measured value in the error detail.
 
-```
-gap(th) = 2*(c + a*cos(th) - b*sin(th)),  a=0.0371575, b=0.04342168, c=0.03060114-0.02526
-```
+The next runtime run still expects approach targets near 0.05, 0.10, and later 0.05 rad increments
+through 0.357 rad; every logged delta at or below 0.05 rad; every `must_reach` result reporting
+`reached_goal=true` and `stalled=false`; contact only after the 50 mm approach; a settled gap within
+6 mm of the 40 mm cube; no sustained shaking; the cube held through retreat; and `/pick` returning
+`ok: true`. If a bounded `must_reach` step still fails before contact, stop this slice. The next
+diagnosis is to restore follower state interfaces with `mimic="false"` so true linkage motion can be
+observed without restoring `gz_ros2_control`'s second mimic drive.
 
-`knuckle_angle_for_gap_m` is the exact inverse via the `R·cos(th+phi)` identity
-(`R = hypot(a,b)`, `phi = atan2(b,a)`), rejecting an out-of-range gap instead of clamping it.
+### Bounded runtime result: free-space linkage failure remains
 
-At the 40 mm cube's contact angle `th40 = 0.4484 rad`, the local sensitivity is
-`dgap/dth = 2(−a·sin(th) − b·cos(th)) = −0.1105 m/rad`, i.e. **1 mm of gap is 9.05 mrad of
-knuckle**. That fixes both ends of the usable window for a squeeze target beyond contact:
+The next run reached the bounded approach and confirmed its command invariant. Every requested delta
+was exactly 0.05 rad. Four steps returned `SUCCEEDED`, `reached_goal=true`, and `stalled=false` at
+measured positions 0.040735, 0.081096, 0.121614, and 0.161944 rad. Each result remained roughly
+0.0093–0.0097 rad below its target, which is inside the installed gripper controller's default
+0.01 rad `goal_tolerance`. The fifth target was 0.211944 rad, a calculated 65.1 mm jaw gap, but it
+did not return before the 0.8 ROS-second free-space deadline. The skill cancelled that active goal
+and failed as designed.
 
-- **Upper bound** — residual error must keep the commanded velocity inside the joint's rating:
-  `err ≤ 0.5 / (0.1 × 100) = 0.05 rad → 5.52 mm`.
-- **Lower bound** — residual error must exceed the controller's `goal_tolerance` (default
-  `0.01 rad`) or the goal resolves `reached_goal` with no continuing closure command →
-  `1.10 mm`.
+This is before the 50 mm approach boundary and leaves 25.1 mm more total gap than the 40 mm cube.
+The screenshot also shows both pads clear of the cube. Contact cannot explain the failure. The
+bounded command fixed the oversized first request, but it did not fix the underlying free-space
+linkage motion. This triggers the recorded stop condition: do not raise the timeout, retry silently,
+or retune geometry, friction, gain, or step size from this result.
 
-`squeeze_depth_m: 0.003` sits at the middle of `1.10–5.52 mm`. For the 40 mm cube the target is
-`0.4755 rad` against the `0.4484 rad` the box allows: residual `0.0271 rad` → commanded
-`0.271 rad/s`, inside the 0.5 rad/s rating — against `3.52 rad/s` at the old `0.8` target, a 13×
-reduction. Both bounds and the round-trip (`gap(knuckle_angle_for_gap_m(0.037)) = 37.0 mm`) were
-checked numerically before this was written, not asserted from the algebra alone.
+The five native-mimic follower joints are now restored to the Gazebo `<ros2_control>` resource as
+state-only joints with the joint-level attribute `mimic="false"`. Installed `ros2_control` 4.45.2
+uses that attribute to exclude them from `HardwareInfo::mimic_joints`. Installed
+`gz_ros2_control` 1.2.19 therefore reads their real Gazebo position and velocity but does not run
+its separate mimic velocity-command loop. They have no command interfaces, so they are passive to
+`gz_ros2_control`; Harmonic's native SDF mimic constraint remains the only linkage governor.
 
-### Verification: measure the jaw and the linkage, never trust `stalled`
+This is diagnostic observability, not a claimed grasp fix. The next runtime evidence must contain
+all six gripper joint positions during the same bounded approach. Compare each follower against its
+URDF mimic relation and locate the first divergence or velocity-limit event at the fifth step. The
+launch log must not contain any `Joint '...' is mimicking joint '...'` line for the five followers.
+Runtime status remains unresolved until that trace is captured.
 
-Verified directly against the installed controller source (Test 5/6 above): `stalled: true` means
-only "the controller stopped reporting," recorded once while the jaw sat in open air at 67–69 mm on
-a 40 mm box. `GraspOutcome.object_present` no longer reads that flag at all.
+### Final runtime record: investigation stopped
 
-`GripperCommander` now subscribes to `/joint_states` (joints found by name, never assumed index)
-and, on every terminal close/verify call, requires **both**:
+Koushik requested that this investigation stop without another fix or diagnosis. The repository is
+left with the bounded approach and the diagnostic follower state interfaces described above. This
+RCA remains unresolved; `/pick` does not succeed.
 
-1. `|jaw_gap_m(left_knuckle) − object_width_m| ≤ capture_tolerance_m` (`0.005`), and
-2. `| |left_finger_tip| − |right_finger_tip| | ≤ symmetry_tolerance_rad` (`0.005`).
+The diagnostic wiring was confirmed at runtime before `/sync_objects`, `/home`, and `/pick`. All
+three controllers were active. The driven `robotiq_85_left_knuckle_joint` was the only gripper joint
+with a command interface. Position and velocity state interfaces were present for the driven joint
+and all five followers. One idle `/joint_states` sample reported the driven joint at
+`0.000070364 rad`; follower positions were between `-0.000070058` and `0.000068665 rad`, with signs
+matching their URDF mimic multipliers around the open position. Follower effort entries were `NaN`
+because no follower effort interfaces were declared.
 
-`capture_tolerance_m` is an error budget, not a round number: ≈0.55 mm from the allowed 5 mrad
-symmetry residual (via the 9.05 mrad/mm sensitivity above), the remainder for contact penetration
-and solver slop. The failure modes it has to reject sit 28 mm away (the recorded 67–69 mm air-stall)
-and 40 mm away (a close on nothing), so there is no risk of confusing them with a real 40 mm capture.
-`symmetry_tolerance_rad` directly answers Koushik's photographed one-jaw asymmetry: the RCA measured
-`3.6°`/`5.4°` (63/95 mrad) mismatches during failures, so `0.005 rad` is an order of magnitude
-inside the observed defect, not a number chosen to make a run pass.
+Both simulator launches loaded all six gripper joints and logged no `is mimicking joint` line. This
+confirms that `mimic="false"` kept the five followers out of `gz_ros2_control`'s second mimic loop
+while their physical states remained observable.
 
-No settle sleep was added: a terminal controller result already means the 1.0 s quiet window
-elapsed (when the controller reaches one at all), so the latest `/joint_states` sample at that
-instant is the physically settled state, read on the executor thread while the worker blocks on the
-gripper future — the existing single-threaded-executor-plus-worker invariant this class has always
-relied on.
+Two recorded `/pick` attempts reproduced the same failure on different arm candidates. In the first,
+candidate 2 passed a 100% Cartesian descent preflight. In the second, candidate 1 passed the same
+check. Both executed pre-grasp and descent, completed four bounded 0.05 rad approach steps, then
+timed out and cancelled the fifth step at a calculated 65.1 mm gap. Both actions aborted in
+`close_gripper` with `free-space approach step timed out before reaching its target`.
 
-**Scope limit on `BOX_X`.** `SceneManager::known_object_geometry` now also returns `width_m` (from
-`primitive.dimensions[BOX_X]`, previously stored and never read). This is the closing dimension only
-because the cube is `0.04³` and `grasp_pose` fixes `yaw = 0.0`. This iteration does not implement
-general object-width selection; a non-square object would need the approach yaw chosen against the
-object's own frame.
-
-A new `verify_hold` phase re-runs the same gap+symmetry check after `retreat`, through
-`GripperCommander::verify_hold()`, with no new command issued. A jaw that sprang back open on the
-lift fails `verify_hold` rather than letting `/pick` report `ok: true` on a dropped cube.
-
-### The physics engine: a platform decision, taken here, not a fix under test
-
-The world's physics engine changes from `bullet_featherstone` to `dart` in this iteration.
-**This is not claimed as the fix for anything measured above**, and is not backed by an A/B run
-against this bug — it is a platform choice: `dart` is Gazebo Harmonic's default and primary engine,
-`bullet_featherstone` support is documented upstream as preliminary. Iteration 6's finite-difference
-argument for a `bullet_featherstone` velocity-readback defect is suggestive, not conclusive: a joint
-reversing direction inside an 80 ms sample window can produce a high instantaneous velocity reading
-alongside near-zero net displacement without the reading itself being wrong. Recording this
-explicitly so a future reader does not treat the engine switch as validated evidence it was never
-given.
-
-**A real, load-bearing consequence of the switch was found before any runtime test.** The preflight
-this iteration's plan called for — checking the installed `libgz-physics-dartsim-plugin.so` for
-mimic-constraint symbols — came back **zero**, against **337** for the same check on
-`libgz-physics-bullet-featherstone-plugin.so` (checked with both `strings` and `nm -D` on the
-installed `gz-physics7` 7.6.0 plugins; `dartsim`'s own `JointFeatures` class exports no
-`SetJointMimicConstraint`-shaped symbol at all). `gz-sim` has no engine-agnostic mimic system to fall
-back on either — only the physics-engine plugin can satisfy that feature request. Under `dart`, the
-SDF `<axis><mimic>` block sdformat still generates from the URDF tag is simply never enforced
-natively: the five follower joints would reach physics completely unconstrained, worse than any
-state examined in Iterations 7 or 8.
-
-This was strong enough evidence to act on directly rather than wait for a failed Gate B, so the
-pre-decided fallback was applied in the same change: `sorting_arm.gazebo_ros2_control.xacro`'s five
-follower `<joint>` entries lose their `mimic="false"` attribute (added in Iteration 8) and go back to
-plain state-only declarations. This restores `gz_ros2_control`'s own control-cycle mimic drive
-(auto-detected from the URDF `<mimic>` tag via `hardware_interface`'s parser, the same mechanism
-Iteration 8 disabled to stop it fighting `bullet_featherstone`'s native constraint) as the followers'
-**only** enforcer — safe specifically because no native constraint exists under `dart` to fight it,
-which is exactly `arm_stack`'s own single-enforcer shape under Fortress/`ign_ros2_control`. Gate B in
-the verification plan (a raw `GripperCommand` goal against the open gripper, checked for fingertip
-symmetry and mimic tracking error in a bag) is still the runtime confirmation this reasoning is
-correct — the static symbol check proves the constraint is absent, not that the fallback drive
-behaves well under real contact load.
-
-### Ground-truth box pose: bridged for the bag, never wired into the skill
-
-`gz_bridge.yaml` now also bridges `/world/sorting_cell/dynamic_pose/info`
-(`gz.msgs.Pose_V` → `tf2_msgs/msg/TFMessage`) alongside the existing `/clock` bridge, so a recorded
-bag can show where `red_box_1` actually was throughout close/attach/retreat. No skills code
-subscribes to it. Jaw gap and symmetry prove something stopped the jaw at approximately the object's
-width and that both pads agree — they do not by themselves rule out a corner catch or a vertically
-slipping box. The bridged pose is the independent check for that, deliberately kept out of the
-skill's own verdict: reading simulator ground truth in a skill would be a perception bypass, reading
-it from a bag afterward is verification.
-
-### Known inconsistency, left deliberately
-
-The SRDF's `gripper_close` group state (`sorting_arm.srdf`) still names `0.8` — a MoveIt named
-state the skills close path has never used and still does not. Left as-is; not part of this slice.
-
-### Build and static validation
-
-`colcon build --symlink-install` on `sorting_arm_interfaces`, `sorting_arm_skills`,
-`sorting_arm_description`, `sorting_arm_bringup`, `sorting_arm_moveit` — clean, only the
-pre-existing upstream `tl_expected` deprecation warning. `colcon test` on `sorting_arm_skills`
-(`cpplint`, `cppcheck`, `lint_cmake`, `xmllint`) — 0 errors, 0 failures. `xacro | check_urdf` on the
-regenerated sim URDF — parses, root link `world`. `gz sdf -p` on the regenerated world — confirms
-`<physics type='dart'>`. The jaw-gap formula and both derived bounds were checked numerically
-(Python), not just algebraically, before being written into either the code or this entry.
-
-### Runtime evidence still required before this RCA closes
-
-Nothing above is runtime-verified yet. Acceptance is Gate A (no `is mimicking joint` lines are
-expected now — the followers are driven by `gz_ros2_control` on purpose, so this specific check from
-Iterations 8–11 no longer applies as a pass condition; the new pass condition is Gate B below),
-Gate B (a raw `0.475 rad` goal against the open gripper settles near target with fingertip symmetry
-within `0.005 rad` and bounded mimic-tracking error — this is what actually confirms the dartsim
-mimic fallback holds under motion, not just statically), and Gate C (the full `/pick` sequence
-against `red_box_1`, bagged, meeting all seven of Koushik's original acceptance points). Do not
-mark this RCA closed on the strength of the static evidence above alone.
-
-### Gate B: clean pass, first time this RCA has one
-
-Koushik ran the raw free-air goal (`0.475 rad`, arm untouched at spawn) and bagged
-`/joint_states`. Extracted directly from `/tmp/i12_bag_free_close`: the knuckle rises at the rated
-`0.5 rad/s`, reaches exactly `0.4750 rad`, and holds there with velocity `0.0000 rad/s` for the
-remaining ~15 seconds recorded. The two fingertip followers land on `-0.4750` and `+0.4750`
-respectively — the ideal `multiplier=-1`/`multiplier=1` mimic relation, exactly, with a measured
-symmetry residual of **0.000 mrad**. This is categorically better mimic tracking than any prior
-iteration achieved under `bullet_featherstone` (which never got tighter than several hundred mrad
-under load). Gate B passes outright; the `dart`-plus-`gz_ros2_control`-own-drive fallback from the
-previous section holds under real motion, not just statically.
-
-### Gate C, first attempt: the jaw closed correctly and the pick still aborted
-
-Koushik ran the full `/sync_objects` → `/home` → `/pick` sequence against `red_box_1`
-(`/tmp/i12_bag_pick_use`), watched it directly, and photographed it: both pads flush against the
-box, centred, no visible asymmetry — the clearest physical contact this RCA has on record. The
-action still reported `ok: false`, `message: "gripper result timed out"`, `ABORTED`.
-
-Extracted from the bag, `gripper_controller` accepted the close goal at `rosout` wall time
-`1785618126.953` and was cancelled at `1785618136.953` — the usual `10.000s` client deadline. The
-driven `robotiq_85_left_knuckle_joint`, read for the whole window:
-
-- Free swing to `t≈0.8s`, then settles hard: from `t≈1.0s` onward the position holds inside a
-  **0.001 rad (≈0.1 mm) band**, ending at `0.4502 rad` — a measured gap of **39.8 mm** against the
-  **40 mm** box, well inside `capture_tolerance_m`. This is genuine, settled physical contact, not
-  a near-miss.
-- Reported velocity does not settle to match. It sits mostly in a small negative creep
-  (`-0.002` to `-0.018 rad/s` — plausibly the real residual push from the intentional
-  `squeeze_depth_m` overshoot working against a rigid stop) but is interrupted by a **consistently
-  `+0.15 rad/s` spike**, recurring roughly every 0.3–1.4 seconds for the entire window, each one
-  resetting the controller's quiet-window timer. The longest uninterrupted quiet stretch measured
-  **0.98 s against the `stall_timeout` default of `1.0 s`** — missed by 20 ms.
-
-**The clock this had to be measured in matters.** `get_node()->now()` inside
-`check_for_success()` respects `use_sim_time`, so `stall_timeout` is compared in *simulation*
-time, not wall time. Converting each `/joint_states` message's own `header.stamp` (sim time)
-instead of the bag's wall-clock arrival time gives an effective real-time factor for this close
-window of **0.848** — far healthier than Iteration 7's `0.09` collapse under `bullet_featherstone`,
-but still below 1.0, and the 20 ms miss above is measured in the sim-time domain, the one that
-actually governs the controller.
-
-This is a materially different signature from Iteration 6's bullet-side finding. That one was
-chaotic — velocity swinging both directions with no discernible pattern while position stayed
-frozen. This one is a single-signed, semi-regular `+0.15 rad/s` blip, consistent with a periodic
-contact-solver re-evaluation under `dart`'s LCP-based constraint solver rather than raw sensor
-noise, though the exact mechanism is not pinned down further here — nothing currently bridged
-(no contact-force topic) can localise it more precisely than "engine-side, tied to sustained rigid
-contact." Recorded as a new open fact, not solved.
-
-### Iteration 13: a client-side timeout is not proof of failure either
-
-Reading `check_for_success()` and `set_hold_position()` directly from the installed source settles
-what actually happens at cancellation: `set_hold_position()` sets `command_struct_.position_` to
-`joint_position_state_interface_->get().get_optional().value()` — the joint's own current position
-at that instant. In this run that is `≈0.4502 rad`, already inside the box. Cancelling here does
-not reopen the jaw or release the object; it freezes the servo exactly where it already was,
-holding.
-
-`GripperCommander::close()` was, until this iteration, throwing that fact away. On any `send_goal`
-failure — including "gripper result timed out" — it returned `GraspOutcome{false, false, ...}`
-unconditionally, never consulting `/joint_states`. Gate C's first run proves that path can discard
-a capture already verified by the same measurement this class trusts everywhere else.
-
-**Change:** `close()` now checks the jaw specifically on the `"gripper result timed out"` failure
-(the one case where the goal genuinely ran for its full duration and only *our* wait gave up —
-`server unavailable`/`goal rejected`/`goal-response timeout` mean nothing ran long enough to be
-worth measuring, and are left as unconditional failures). If `evaluate_capture()` reports the
-object present, `close()` returns that measurement instead of the timeout failure. `GraspOutcome.ok`
-is re-scoped from "the action completed" to "a usable verdict exists, from the controller or from
-direct measurement" — documented at the struct definition.
-
-**This bears directly on Koushik's original acceptance point 3** ("`GripperActionController`
-returns its terminal successful grasp result"). Under this change, a controller that never
-resolves at all can still count as a successful pick if `/joint_states` proves the jaw is
-correctly closed on the object. That is a deliberate redefinition, not an oversight — flagged
-explicitly here because it changes what "the pick succeeded" means, and is reversible in one
-function if a stricter, controller-verdict-only contract is wanted instead.
-
-**Not changed:** `stall_velocity_threshold` and `stall_timeout` stay at their current values.
-Loosening either was considered and rejected — Iteration 6 already established that no single
-velocity threshold can separate settled contact from engine noise without also masking real
-motion, and this iteration's own `+0.15 rad/s` spikes are the same order of magnitude as genuine
-free-swing motion, so that reasoning still holds under `dart`. The fix is verifying independently
-of the controller's verdict, not tuning the controller to produce one more often.
-
-**Build:** `colcon build --symlink-install --packages-select sorting_arm_skills` — clean, only the
-pre-existing `tl_expected` warning. `colcon test` — `cpplint`/`cppcheck`/`lint_cmake`/`xmllint`, 0
-errors, 0 failures.
-
-**Runtime result:** not yet re-run. Gate C needs to repeat with this change in place; expect the
-same physical close (39.8 mm gap, photographed symmetry) to now return `ok: true,
-object_present: true` from `close()` instead of aborting `/pick` at `close_gripper`.
-
-### Gate C, second attempt: `/pick` returns `ok: true`
-
-Koushik reran the standard sequence. `close_gripper` logged the same pattern as the first
-attempt — controller silence, then a direct measurement — but this time `close()` accepted it
-instead of failing the phase:
-
-```
-[skill_server_node]: close_gripper: object width 0.0400 m, target 0.4755 rad (37.0 mm gap)
-[skill_server_node]: close_gripper: no terminal controller result, checked jaw directly —
-    measured gap 39.758542 mm vs object 40.000000 mm, symmetry 0.000016 rad
-```
-
-`/pick` advanced through every phase — `open_gripper` → `pre_grasp` → `descend` → `close_gripper`
-→ `verify_grasp` → `attach` → `retreat` → `verify_hold` — and returned:
-
-```
-result:
-  ok: true
-  native_code: 0
-  phase: retreat
-  message: ''
-Goal finished with status: SUCCEEDED
-```
-
-Koushik's own account, watching directly: "arm picks very stably... prev it was super wobbly the
-whole gripper thing now it is perfect." The measured symmetry residual on this run
-(`0.000016 rad`, ≈0.016 mrad) is tighter again than the free-air Gate B run — the dart-plus-
-`gz_ros2_control`-own-drive mimic tracking holds under real load, not just in open air.
-
-### RCA closed
-
-All seven of Koushik's original acceptance points are met, evidenced from the controller log and
-`/pick`'s own result, not from RViz:
-
-1. Both pads close symmetrically — `0.000016 rad` fingertip residual.
-2. Pads touch the box and maintain pressure — measured gap `39.76 mm` vs the `40 mm` box, held
-   through `attach`/`retreat` with no goal or cancel sent after capture.
-3. `GripperActionController` did not itself return a terminal successful result on this run — see
-   Iteration 13's explicit, deliberate redefinition of what a usable verdict means. Direct jaw
-   measurement stood in for it, and is why point 3 as originally written is not met literally.
-4. `/pick` proceeded past `close_gripper`.
-5. The arm retreated while holding the box (`verify_hold` passed post-retreat).
-6. `/pick` returned `ok: true`.
-7. Every number above came from the controller log and `/joint_states`, never from RViz.
-
-**In practice, two changes closed this RCA: Iteration 12 and Iteration 13.** Every iteration
-before them — 0 through 11, the entire investigation up to this session — shows the same dominant
-symptom in some form: visible shaking, chattering, or wobbling of the gripper during
-`close_gripper`, whatever else was also being tested at the time (friction, grasp depth, box
-geometry, mimic wiring). That symptom traces to one thing that was true in every single one of
-them and only changed in Iteration 12: `close_position` commanded the mechanical hard stop
-(`0.8 rad`), so any real object left the position error permanently large and the joint permanently
-asking for several times its rated speed. Nothing before Iteration 12 touched that target. Once it
-did — closing to a measured target just past contact instead of the hard stop — the wobbling
-stopped being the story; Gate C's first run showed solid, symmetric, settled contact on camera.
-What was left after that was a narrower, different problem (the controller's own terminal verdict,
-not the physical grasp), and Iteration 13's jaw-measurement fallback closed that. Two iterations,
-not eleven, because the first eleven never changed the one thing that mattered most.
-
-Three causes combined across those two iterations to get here, none sufficient alone:
-
-- **The close target moved off the mechanical hard stop** (Iteration 12) — `0.8 rad` blocked by a
-  40 mm box left a permanent `0.35 rad` error asking for `3.52 rad/s` on a `0.5 rad/s` joint,
-  forever. This alone stops the joint fighting itself and is not engine-specific.
-- **The physics engine moved to `dart`** (Iteration 12, a platform decision, not chosen to fix
-  this bug) — Gate B's free-air run measured `0.000 mrad` fingertip symmetry against
-  `bullet_featherstone`'s photographed `3.6°–5.4°` mismatches. This is a real, measured
-  improvement, just not the one this RCA set out to prove.
-- **Verification stopped trusting the controller's own verdict** (Iteration 13) — even with the
-  above two fixes, `GripperActionController` still never produced a terminal result within
-  `10 s` on either Gate C run, because of a periodic `+0.15 rad/s` velocity reading recurring
-  every 0.3–1.4 sim-seconds during sustained contact under `dart` — a milder, differently-shaped
-  descendant of Iteration 6's original `bullet_featherstone` finding, not eliminated by the engine
-  switch. Measuring the jaw directly, on a client-side timeout as much as on a clean result, is
-  what actually let `/pick` succeed on a controller that still won't say "done."
-
-**What is not closed by this RCA:** the periodic velocity artifact under `dart` during sustained
-contact is real, measured, and unexplained beyond "engine-side, tied to rigid contact" — nothing
-currently bridged (no contact-force topic) localises it further. It no longer blocks `/pick`
-because verification no longer depends on the controller resolving it, but it would still block
-any future consumer of this controller's own terminal result. `docs/project/decisions.md` records
-the engine choice; this file's job — explaining why `/pick` failed and confirming it now doesn't —
-is done.
+Evidence is stored under `ai/debug/iteration_13/runtime`: `skills.log`, `skills2.log`, `sim.log`,
+`sim3.log`, `runtime.log`, and two MCAP bags named `joints` and `joints2`. The bags contain 22,236
+and 20,501 `/joint_states` messages respectively, together with `/clock`. No further interpretation
+or change was made after Koushik's stop request.
+>>>>>>> Stashed changes

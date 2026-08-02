@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -37,6 +38,11 @@ class PickServerNode {
   SkillResult pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre,
                    double half_height_m, double width_m, std::stop_token stop_token,
                    std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle);
+
+  // Runs body() with object_id's grasp contacts allowed, then always restores
+  // the collision matrix — a restore failure is folded into body's result
+  // instead of silently dropped.
+  SkillResult with_grasp_contacts_disabled(const std::string& object_id, const std::function<SkillResult()>& body);
 
   std::shared_ptr<rclcpp::Node> node_;
   std::shared_ptr<MotionCommander> motion_;

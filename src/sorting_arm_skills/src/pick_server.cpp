@@ -1,13 +1,48 @@
 #include "sorting_arm_skills/pick_server.hpp"
 
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "sorting_arm_skills/helpers.hpp"
 
 namespace sorting_arm {
 
 using namespace std::placeholders;
+
+namespace {
+
+std::string terminal_joint_summary(const MotionCommander::PreparedPoseMotion& prepared) {
+  const auto& trajectory = prepared.plan.trajectory.joint_trajectory;
+  const auto& positions = trajectory.points.back().positions;
+  std::string summary;
+  for (std::size_t index = 0; index < trajectory.joint_names.size(); ++index) {
+    if (!summary.empty()) {
+      summary += ", ";
+    }
+    summary += trajectory.joint_names[index] + "=" + std::to_string(positions[index]);
+  }
+  return summary;
+}
+
+std::string candidate_outcome(int candidate_index, int candidate_count, const SkillResult& result) {
+  return "candidate " + std::to_string(candidate_index) + "/" + std::to_string(candidate_count) +
+         " phase=" + result.phase + " native_code=" + std::to_string(result.native_code) + ": " + result.message;
+}
+
+std::string join_candidate_outcomes(const std::vector<std::string>& outcomes) {
+  std::string summary;
+  for (const auto& outcome : outcomes) {
+    if (!summary.empty()) {
+      summary += "; ";
+    }
+    summary += outcome;
+  }
+  return summary;
+}
+
+}  // namespace
 
 PickServerNode::PickServerNode(std::shared_ptr<rclcpp::Node> node, std::shared_ptr<MotionCommander> motion,
                                std::shared_ptr<SceneManager> scene, std::shared_ptr<GripperCommander> gripper,
@@ -56,6 +91,20 @@ void PickServerNode::handle_accepted(std::shared_ptr<GoalHandle> goal_handle) {
   state_->start_worker([this, goal_handle](std::stop_token stop_token) { run(stop_token, goal_handle); });
 }
 
+SkillResult PickServerNode::with_grasp_contacts_disabled(const std::string& object_id,
+                                                         const std::function<SkillResult()>& body) {
+  const auto allow_result = scene_->begin_grasp_contacts(object_id);
+  if (!allow_result.ok) return allow_result;
+
+  const auto body_result = body();
+
+  const auto restore_result = scene_->end_grasp_contacts();
+  if (restore_result.ok) return body_result;
+  if (body_result.ok) return restore_result;
+  return skill_error("grasp_contacts", body_result.message + "; " + restore_result.message,
+                     restore_result.native_code);
+}
+
 SkillResult PickServerNode::pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre,
                                  double half_height_m, double width_m, std::stop_token stop_token,
                                  std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle) {
@@ -72,9 +121,22 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
   if (enter_phase("pre_grasp")) return skill_error("pre_grasp", "cancellation requested");
   const auto grasp = grasp_pose(object_centre, half_height_m, grasp_offset_m_);
   const auto pre_grasp = pre_grasp_pose(grasp, approach_height_m_);
+  RCLCPP_INFO(node_->get_logger(),
+              "Pick '%s': pre-grasp target frame=%s position=(%.6f, %.6f, %.6f) orientation=(%.6f, %.6f, %.6f, "
+              "%.6f)",
+              object_id.c_str(), pre_grasp.header.frame_id.c_str(), pre_grasp.pose.position.x,
+              pre_grasp.pose.position.y, pre_grasp.pose.position.z, pre_grasp.pose.orientation.x,
+              pre_grasp.pose.orientation.y, pre_grasp.pose.orientation.z, pre_grasp.pose.orientation.w);
+  RCLCPP_INFO(node_->get_logger(),
+              "Pick '%s': grasp target frame=%s position=(%.6f, %.6f, %.6f) orientation=(%.6f, %.6f, %.6f, "
+              "%.6f)",
+              object_id.c_str(), grasp.header.frame_id.c_str(), grasp.pose.position.x, grasp.pose.position.y,
+              grasp.pose.position.z, grasp.pose.orientation.x, grasp.pose.orientation.y, grasp.pose.orientation.z,
+              grasp.pose.orientation.w);
   MotionCommander::PreparedPoseMotion prepared_pre_grasp;
   MotionCommander::PreparedCartesianMotion prepared_descent;
   SkillResult last_candidate_result = skill_error("descend_preflight", "no pre-grasp candidate was checked");
+  std::vector<std::string> candidate_outcomes;
   bool approach_prepared = false;
 
   for (int candidate_index = 1; candidate_index <= max_pre_grasp_candidates_; ++candidate_index) {
@@ -86,9 +148,29 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
     const auto pose_result = motion_->plan_pose_candidate(pre_grasp, candidate_pre_grasp);
     if (!pose_result.ok) {
       last_candidate_result = pose_result;
-      RCLCPP_WARN(node_->get_logger(), "rejecting pre-grasp candidate %d/%d: %s", candidate_index,
-                  max_pre_grasp_candidates_, pose_result.message.c_str());
+      candidate_outcomes.push_back(candidate_outcome(candidate_index, max_pre_grasp_candidates_, pose_result));
+      RCLCPP_WARN(node_->get_logger(), "rejecting pre-grasp candidate %d/%d phase=%s native_code=%d: %s",
+                  candidate_index, max_pre_grasp_candidates_, pose_result.phase.c_str(), pose_result.native_code,
+                  pose_result.message.c_str());
       continue;
+    }
+
+<<<<<<< Updated upstream
+=======
+    const auto& joint_trajectory = candidate_pre_grasp.plan.trajectory.joint_trajectory;
+    if (joint_trajectory.points.empty() ||
+        joint_trajectory.joint_names.size() != joint_trajectory.points.back().positions.size()) {
+      const auto terminal_position_count =
+          joint_trajectory.points.empty() ? std::size_t{0} : joint_trajectory.points.back().positions.size();
+      RCLCPP_WARN(node_->get_logger(),
+                  "pre-grasp candidate %d/%d terminal-joint diagnostic unavailable: joint_names=%zu "
+                  "terminal_positions=%zu",
+                  candidate_index, max_pre_grasp_candidates_, joint_trajectory.joint_names.size(),
+                  terminal_position_count);
+    } else {
+      const auto joint_summary = terminal_joint_summary(candidate_pre_grasp);
+      RCLCPP_INFO(node_->get_logger(), "pre-grasp candidate %d/%d terminal joints: %s", candidate_index,
+                  max_pre_grasp_candidates_, joint_summary.c_str());
     }
 
     const auto allow_result = scene_->begin_grasp_contacts(object_id);
@@ -96,21 +178,18 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
       return allow_result;
     }
 
+>>>>>>> Stashed changes
     MotionCommander::PreparedCartesianMotion candidate_descent;
-    const auto descent_result = motion_->plan_cartesian_from(candidate_pre_grasp, grasp, candidate_descent);
-    const auto restore_result = scene_->end_grasp_contacts();
-    if (!restore_result.ok) {
-      if (!descent_result.ok) {
-        return skill_error("grasp_contacts", descent_result.message + "; " + restore_result.message,
-                           restore_result.native_code);
-      }
-      return restore_result;
-    }
+    const auto descent_result = with_grasp_contacts_disabled(object_id, [&] {
+      return motion_->plan_cartesian_from(candidate_pre_grasp, grasp, candidate_descent);
+    });
 
     if (!descent_result.ok) {
       last_candidate_result = descent_result;
-      RCLCPP_WARN(node_->get_logger(), "rejecting pre-grasp candidate %d/%d: %s", candidate_index,
-                  max_pre_grasp_candidates_, descent_result.message.c_str());
+      candidate_outcomes.push_back(candidate_outcome(candidate_index, max_pre_grasp_candidates_, descent_result));
+      RCLCPP_WARN(node_->get_logger(), "rejecting pre-grasp candidate %d/%d phase=%s native_code=%d: %s",
+                  candidate_index, max_pre_grasp_candidates_, descent_result.phase.c_str(), descent_result.native_code,
+                  descent_result.message.c_str());
       continue;
     }
 
@@ -124,9 +203,9 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
 
   if (!approach_prepared) {
     return skill_error("descend_preflight",
-                       "no pre-grasp candidate supported the complete collision-checked Cartesian descent; last "
-                       "failure: " +
-                           last_candidate_result.message,
+                       "no pre-grasp candidate supported the complete collision-checked Cartesian descent; "
+                       "outcomes: " +
+                           join_candidate_outcomes(candidate_outcomes),
                        last_candidate_result.native_code);
   }
 
@@ -134,47 +213,26 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
   if (!pre_grasp_result.ok) return pre_grasp_result;
 
   if (enter_phase("descend")) return skill_error("descend", "cancellation requested");
-  const auto allow_result = scene_->begin_grasp_contacts(object_id);
-  if (!allow_result.ok) return allow_result;
 
-  auto restore_contacts = [&](const SkillResult& primary_result) {
-    const auto restore_result = scene_->end_grasp_contacts();
-    if (restore_result.ok) {
-      return primary_result;
-    }
-    if (primary_result.ok) {
-      return restore_result;
-    }
-    return skill_error("grasp_contacts", primary_result.message + "; " + restore_result.message,
-                       restore_result.native_code);
-  };
+  const auto sequence_result = with_grasp_contacts_disabled(object_id, [&]() -> SkillResult {
+    const auto descend_result = motion_->execute_prepared_cartesian(prepared_descent);
+    if (!descend_result.ok) return descend_result;
 
-  const auto descend_result = motion_->execute_prepared_cartesian(prepared_descent);
-  if (!descend_result.ok) return restore_contacts(descend_result);
+    if (enter_phase("close_gripper")) return skill_error("close_gripper", "cancellation requested");
+    const auto grasp_outcome = gripper_->close(width_m);
+    if (!grasp_outcome.ok) return skill_error("close_gripper", grasp_outcome.detail, grasp_outcome.native_code);
 
-  if (enter_phase("close_gripper")) {
-    return restore_contacts(skill_error("close_gripper", "cancellation requested"));
-  }
-  const auto grasp_outcome = gripper_->close(width_m);
-  if (!grasp_outcome.ok) {
-    return restore_contacts(skill_error("close_gripper", grasp_outcome.detail, grasp_outcome.native_code));
-  }
+    feedback->phase = "verify_grasp";
+    goal_handle->publish_feedback(feedback);
+    if (!grasp_outcome.object_present) return skill_error("verify_grasp", grasp_outcome.detail);
 
-  feedback->phase = "verify_grasp";
-  goal_handle->publish_feedback(feedback);
-  if (!grasp_outcome.object_present) {
-    return restore_contacts(skill_error("verify_grasp", grasp_outcome.detail));
-  }
-
-  // no cancellation check between verify_grasp and attach — an unverified
-  // grasp must never reach the scene
-  feedback->phase = "attach";
-  goal_handle->publish_feedback(feedback);
-  const auto attach_result = scene_->attach(object_id);
-  if (!attach_result.ok) return restore_contacts(attach_result);
-
-  const auto restore_result = restore_contacts(skill_ok("attach"));
-  if (!restore_result.ok) return restore_result;
+    // no cancellation check between verify_grasp and attach — an unverified
+    // grasp must never reach the scene
+    feedback->phase = "attach";
+    goal_handle->publish_feedback(feedback);
+    return scene_->attach(object_id);
+  });
+  if (!sequence_result.ok) return sequence_result;
 
   if (enter_phase("retreat")) return skill_error("retreat", "cancellation requested");
   const auto retreat = retreat_pose(grasp, retreat_height_m_);
