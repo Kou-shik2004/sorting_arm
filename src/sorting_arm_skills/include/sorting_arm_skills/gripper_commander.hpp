@@ -47,7 +47,6 @@ class GripperCommander {
  private:
   using GripperCommandAction = control_msgs::action::GripperCommand;
 
-<<<<<<< Updated upstream
   // one /joint_states sample, joints found by name — never by assumed index
   struct JawSample {
     double left_knuckle_rad = 0.0;
@@ -65,27 +64,6 @@ class GripperCommander {
 
   void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg);
   GraspOutcome evaluate_capture(double object_width_m) const;
-=======
-  enum class StepMode { must_reach, contact_allowed };
-
-  enum class StepState { reached, contact, failed };
-
-  struct StepOutcome {
-    StepState state = StepState::failed;
-    int native_code = 0;
-    std::string detail;
-    std::optional<double> result_position_rad;
-  };
-
-  // open uses its longer result deadline and cancels if that deadline expires.
-  SkillResult send_goal(double position, const std::string& phase, GripperCommandAction::Result& result);
-
-  // we cancel a free-space timeout, but leave a contact timeout active for the squeeze goal.
-  StepOutcome send_step(double measured_start_rad, double target_rad, StepMode mode);
-
-  std::optional<double> current_knuckle_rad() const;
-  void wait_for_ros_duration(double duration_s) const;
->>>>>>> Stashed changes
 
   std::shared_ptr<rclcpp::Node> node_;
   std::string action_name_;

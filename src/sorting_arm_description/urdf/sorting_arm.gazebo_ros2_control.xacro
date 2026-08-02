@@ -43,36 +43,11 @@
             <state_interface name="effort"/>
         </joint>
 
-<<<<<<< Updated upstream
         <!-- dart's installed plugin has zero mimic feature symbols (checked with nm -D),
              so gz_ros2_control's own control-cycle mimic drive is the followers' only
              enforcer - nothing native competes with it, unlike under bullet_featherstone -->
-=======
-        <!-- we expose follower states for diagnosis but disable ros2_control mimic parsing so
-             Harmonic's native sdf mimic remains the only drive: docs/rca/gripper-grasp-instability.md -->
->>>>>>> Stashed changes
         <joint name="robotiq_85_left_knuckle_joint">
             <command_interface name="position"/>
-            <state_interface name="position"/>
-            <state_interface name="velocity"/>
-        </joint>
-        <joint name="robotiq_85_right_knuckle_joint" mimic="false">
-            <state_interface name="position"/>
-            <state_interface name="velocity"/>
-        </joint>
-        <joint name="robotiq_85_left_inner_knuckle_joint" mimic="false">
-            <state_interface name="position"/>
-            <state_interface name="velocity"/>
-        </joint>
-        <joint name="robotiq_85_right_inner_knuckle_joint" mimic="false">
-            <state_interface name="position"/>
-            <state_interface name="velocity"/>
-        </joint>
-        <joint name="robotiq_85_left_finger_tip_joint" mimic="false">
-            <state_interface name="position"/>
-            <state_interface name="velocity"/>
-        </joint>
-        <joint name="robotiq_85_right_finger_tip_joint" mimic="false">
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>

@@ -1,48 +1,13 @@
 #include "sorting_arm_skills/pick_server.hpp"
 
 #include <stdexcept>
-#include <string>
 #include <utility>
-#include <vector>
 
 #include "sorting_arm_skills/helpers.hpp"
 
 namespace sorting_arm {
 
 using namespace std::placeholders;
-
-namespace {
-
-std::string terminal_joint_summary(const MotionCommander::PreparedPoseMotion& prepared) {
-  const auto& trajectory = prepared.plan.trajectory.joint_trajectory;
-  const auto& positions = trajectory.points.back().positions;
-  std::string summary;
-  for (std::size_t index = 0; index < trajectory.joint_names.size(); ++index) {
-    if (!summary.empty()) {
-      summary += ", ";
-    }
-    summary += trajectory.joint_names[index] + "=" + std::to_string(positions[index]);
-  }
-  return summary;
-}
-
-std::string candidate_outcome(int candidate_index, int candidate_count, const SkillResult& result) {
-  return "candidate " + std::to_string(candidate_index) + "/" + std::to_string(candidate_count) +
-         " phase=" + result.phase + " native_code=" + std::to_string(result.native_code) + ": " + result.message;
-}
-
-std::string join_candidate_outcomes(const std::vector<std::string>& outcomes) {
-  std::string summary;
-  for (const auto& outcome : outcomes) {
-    if (!summary.empty()) {
-      summary += "; ";
-    }
-    summary += outcome;
-  }
-  return summary;
-}
-
-}  // namespace
 
 PickServerNode::PickServerNode(std::shared_ptr<rclcpp::Node> node, std::shared_ptr<MotionCommander> motion,
                                std::shared_ptr<SceneManager> scene, std::shared_ptr<GripperCommander> gripper,
@@ -121,22 +86,9 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
   if (enter_phase("pre_grasp")) return skill_error("pre_grasp", "cancellation requested");
   const auto grasp = grasp_pose(object_centre, half_height_m, grasp_offset_m_);
   const auto pre_grasp = pre_grasp_pose(grasp, approach_height_m_);
-  RCLCPP_INFO(node_->get_logger(),
-              "Pick '%s': pre-grasp target frame=%s position=(%.6f, %.6f, %.6f) orientation=(%.6f, %.6f, %.6f, "
-              "%.6f)",
-              object_id.c_str(), pre_grasp.header.frame_id.c_str(), pre_grasp.pose.position.x,
-              pre_grasp.pose.position.y, pre_grasp.pose.position.z, pre_grasp.pose.orientation.x,
-              pre_grasp.pose.orientation.y, pre_grasp.pose.orientation.z, pre_grasp.pose.orientation.w);
-  RCLCPP_INFO(node_->get_logger(),
-              "Pick '%s': grasp target frame=%s position=(%.6f, %.6f, %.6f) orientation=(%.6f, %.6f, %.6f, "
-              "%.6f)",
-              object_id.c_str(), grasp.header.frame_id.c_str(), grasp.pose.position.x, grasp.pose.position.y,
-              grasp.pose.position.z, grasp.pose.orientation.x, grasp.pose.orientation.y, grasp.pose.orientation.z,
-              grasp.pose.orientation.w);
   MotionCommander::PreparedPoseMotion prepared_pre_grasp;
   MotionCommander::PreparedCartesianMotion prepared_descent;
   SkillResult last_candidate_result = skill_error("descend_preflight", "no pre-grasp candidate was checked");
-  std::vector<std::string> candidate_outcomes;
   bool approach_prepared = false;
 
   for (int candidate_index = 1; candidate_index <= max_pre_grasp_candidates_; ++candidate_index) {
@@ -148,37 +100,11 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
     const auto pose_result = motion_->plan_pose_candidate(pre_grasp, candidate_pre_grasp);
     if (!pose_result.ok) {
       last_candidate_result = pose_result;
-      candidate_outcomes.push_back(candidate_outcome(candidate_index, max_pre_grasp_candidates_, pose_result));
-      RCLCPP_WARN(node_->get_logger(), "rejecting pre-grasp candidate %d/%d phase=%s native_code=%d: %s",
-                  candidate_index, max_pre_grasp_candidates_, pose_result.phase.c_str(), pose_result.native_code,
-                  pose_result.message.c_str());
+      RCLCPP_WARN(node_->get_logger(), "rejecting pre-grasp candidate %d/%d: %s", candidate_index,
+                  max_pre_grasp_candidates_, pose_result.message.c_str());
       continue;
     }
 
-<<<<<<< Updated upstream
-=======
-    const auto& joint_trajectory = candidate_pre_grasp.plan.trajectory.joint_trajectory;
-    if (joint_trajectory.points.empty() ||
-        joint_trajectory.joint_names.size() != joint_trajectory.points.back().positions.size()) {
-      const auto terminal_position_count =
-          joint_trajectory.points.empty() ? std::size_t{0} : joint_trajectory.points.back().positions.size();
-      RCLCPP_WARN(node_->get_logger(),
-                  "pre-grasp candidate %d/%d terminal-joint diagnostic unavailable: joint_names=%zu "
-                  "terminal_positions=%zu",
-                  candidate_index, max_pre_grasp_candidates_, joint_trajectory.joint_names.size(),
-                  terminal_position_count);
-    } else {
-      const auto joint_summary = terminal_joint_summary(candidate_pre_grasp);
-      RCLCPP_INFO(node_->get_logger(), "pre-grasp candidate %d/%d terminal joints: %s", candidate_index,
-                  max_pre_grasp_candidates_, joint_summary.c_str());
-    }
-
-    const auto allow_result = scene_->begin_grasp_contacts(object_id);
-    if (!allow_result.ok) {
-      return allow_result;
-    }
-
->>>>>>> Stashed changes
     MotionCommander::PreparedCartesianMotion candidate_descent;
     const auto descent_result = with_grasp_contacts_disabled(object_id, [&] {
       return motion_->plan_cartesian_from(candidate_pre_grasp, grasp, candidate_descent);
@@ -186,10 +112,8 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
 
     if (!descent_result.ok) {
       last_candidate_result = descent_result;
-      candidate_outcomes.push_back(candidate_outcome(candidate_index, max_pre_grasp_candidates_, descent_result));
-      RCLCPP_WARN(node_->get_logger(), "rejecting pre-grasp candidate %d/%d phase=%s native_code=%d: %s",
-                  candidate_index, max_pre_grasp_candidates_, descent_result.phase.c_str(), descent_result.native_code,
-                  descent_result.message.c_str());
+      RCLCPP_WARN(node_->get_logger(), "rejecting pre-grasp candidate %d/%d: %s", candidate_index,
+                  max_pre_grasp_candidates_, descent_result.message.c_str());
       continue;
     }
 
@@ -203,9 +127,9 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
 
   if (!approach_prepared) {
     return skill_error("descend_preflight",
-                       "no pre-grasp candidate supported the complete collision-checked Cartesian descent; "
-                       "outcomes: " +
-                           join_candidate_outcomes(candidate_outcomes),
+                       "no pre-grasp candidate supported the complete collision-checked Cartesian descent; last "
+                       "failure: " +
+                           last_candidate_result.message,
                        last_candidate_result.native_code);
   }
 

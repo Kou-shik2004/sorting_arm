@@ -281,23 +281,11 @@ SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::Robot
       arm_->computeCartesianPath(waypoints, eef_step_m_, trajectory_msg, /*avoid_collisions=*/true, &error_code);
   arm_->setStartStateToCurrentState();
 
-  RCLCPP_INFO(node_->get_logger(),
-              "descend_preflight: cartesian fraction=%.6f minimum=%.6f trajectory_points=%zu native_code=%d", fraction,
-              min_fraction_, trajectory_msg.joint_trajectory.points.size(), error_code.val);
-
   if (error_code.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
     return skill_error(phase, "cartesian path computation reported an error", error_code.val);
   }
   if (!accept_cartesian_fraction(fraction, min_fraction_)) {
-<<<<<<< Updated upstream
     return skill_error(phase, "cartesian coverage fraction below the configured minimum", error_code.val);
-=======
-    return skill_error("descend_preflight",
-                       "cartesian coverage fraction " + std::to_string(fraction) + " below configured minimum " +
-                           std::to_string(min_fraction_) + " with " +
-                           std::to_string(trajectory_msg.joint_trajectory.points.size()) + " trajectory points",
-                       error_code.val);
->>>>>>> Stashed changes
   }
 
   robot_trajectory::RobotTrajectory robot_traj(arm_->getRobotModel(), arm_group_);
