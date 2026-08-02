@@ -77,17 +77,19 @@ bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_actio
     return false;
   }
   const auto wrapped = result_future.get();
-  if (wrapped.code != rclcpp_action::ResultCode::SUCCEEDED) {
-    RCLCPP_ERROR(node->get_logger(), "%s: action did not succeed (code=%d)", label.c_str(),
+  // the server populates Result on abort/cancel too (goal_handle->abort(result) still
+  // sends it) — read it before deciding success, or the real failure reason is lost
+  if (!wrapped.result) {
+    RCLCPP_ERROR(node->get_logger(), "%s: action ended with code=%d and no result message", label.c_str(),
                 static_cast<int>(wrapped.code));
     return false;
   }
 
   out_result = wrapped.result->result;
-  RCLCPP_INFO(node->get_logger(), "%s result: ok=%s phase=%s native_code=%d message=%s", label.c_str(),
-              out_result.ok ? "true" : "false", out_result.phase.c_str(), out_result.native_code,
-              out_result.message.c_str());
-  return out_result.ok;
+  RCLCPP_INFO(node->get_logger(), "%s result: code=%d ok=%s phase=%s native_code=%d message=%s", label.c_str(),
+              static_cast<int>(wrapped.code), out_result.ok ? "true" : "false", out_result.phase.c_str(),
+              out_result.native_code, out_result.message.c_str());
+  return wrapped.code == rclcpp_action::ResultCode::SUCCEEDED && out_result.ok;
 }
 
 }  // namespace
