@@ -18,10 +18,6 @@ void SkillState::release() {
   goal_active_ = false;
 }
 
-void SkillState::start_worker(std::function<void(std::stop_token)> work) { worker_ = std::jthread(std::move(work)); }
-
-void SkillState::request_stop() { worker_.request_stop(); }
-
 std::optional<std::string> SkillState::attached_object() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return attached_object_id_;

@@ -22,7 +22,7 @@ namespace sorting_arm {
 // mutation here is apply-then-query, never apply-then-sleep.
 class SceneManager {
  public:
-  SceneManager(std::shared_ptr<rclcpp::Node> node, const std::string& planning_frame, const std::string& tcp_link);
+  explicit SceneManager(rclcpp::Node::SharedPtr node);
 
   // Applies the table and both trays as compound collision objects and
   // verifies all three ids are present. Called once at server startup.
@@ -45,29 +45,25 @@ class SceneManager {
   // synced geometry, then verifies world-present/attached-absent.
   SkillResult detach_and_place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& placed_centre);
 
-  // World-frame centre, half-height, and closing-axis width of a synced
-  // dynamic object, or nullopt if unsynced or not a box.
+  // World-frame centre and half-height of a synced dynamic object, or nullopt
+  // if unsynced or not a box.
   struct ObjectGeometry {
     geometry_msgs::msg::PoseStamped centre;
     double half_height_m = 0.0;
-    double width_m = 0.0;  // BOX_X — only correct because grasp_pose fixes yaw=0.0
   };
   std::optional<ObjectGeometry> known_object_geometry(const std::string& object_id) const;
 
  private:
+  moveit_msgs::msg::CollisionObject load_box_set(const std::string& prefix);
   SkillResult query_allowed_collision_matrix(moveit_msgs::msg::AllowedCollisionMatrix& matrix);
-  SkillResult apply_and_verify_allowed_collision_matrix(const moveit_msgs::msg::AllowedCollisionMatrix& matrix,
-                                                        const std::string& operation);
+  SkillResult apply_and_verify_allowed_collision_matrix(const moveit_msgs::msg::AllowedCollisionMatrix& matrix, const std::string& operation);
 
-  std::shared_ptr<rclcpp::Node> node_;
-  std::string planning_frame_;
-  std::string tcp_link_;
-  std::vector<std::string> touch_links_;
+  rclcpp::Node::SharedPtr node_;
   double service_timeout_s_ = 0.0;
 
   std::vector<moveit_msgs::msg::CollisionObject> static_objects_;
 
-  std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> scene_interface_;
+  std::unique_ptr<moveit::planning_interface::PlanningSceneInterface> scene_interface_;
   rclcpp::Client<moveit_msgs::srv::GetPlanningScene>::SharedPtr get_scene_client_;
 
   std::optional<moveit_msgs::msg::AllowedCollisionMatrix> grasp_contacts_baseline_;

@@ -1,27 +1,18 @@
 #pragma once
 
-#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
-#include <thread>
 
 namespace sorting_arm {
 
-// Shared exclusivity across the Pick/Place/Home servers (D6): one
-// manipulation goal at a time, one worker thread, and the object id Pick
-// hands to Place.
+// Shared state across Pick/Place/Home: one manipulation goal at a time and the
+// object id Pick hands to Place. Each action server owns its own worker.
 class SkillState {
  public:
   // false if a goal is already running — caller should REJECT the new goal.
   bool try_claim();
   void release();
-
-  // Starts work on the one owned worker. Only ever called right after a
-  // successful try_claim(), so there is never a previous worker still
-  // running when this is called.
-  void start_worker(std::function<void(std::stop_token)> work);
-  void request_stop();
 
   std::optional<std::string> attached_object() const;
   void set_attached_object(std::optional<std::string> object_id);
@@ -35,7 +26,6 @@ class SkillState {
   mutable std::mutex mutex_;
   bool goal_active_ = false;
   std::optional<std::string> attached_object_id_;
-  std::jthread worker_;
 };
 
 }  // namespace sorting_arm

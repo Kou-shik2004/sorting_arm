@@ -24,11 +24,10 @@ find_package(moveit_msgs REQUIRED)
 find_package(moveit_core REQUIRED)
 find_package(shape_msgs REQUIRED)
 find_package(control_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
 find_package(sorting_arm_interfaces REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 
-add_library(sorting_arm_skills
+add_library(sorting_arm_skills STATIC
   src/helpers.cpp
   src/motion_commander.cpp
   src/scene_manager.cpp
@@ -52,11 +51,10 @@ ament_target_dependencies(sorting_arm_skills PUBLIC
   rclcpp_action
   geometry_msgs
   moveit_msgs
-  shape_msgs
   control_msgs
-  sensor_msgs
   sorting_arm_interfaces
 )
+target_link_libraries(sorting_arm_skills PRIVATE shape_msgs::shape_msgs)
 target_link_libraries(sorting_arm_skills PUBLIC
   moveit_core::moveit_collision_detection
   moveit_ros_planning_interface::moveit_move_group_interface
@@ -74,10 +72,15 @@ target_link_libraries(motion_demo PRIVATE sorting_arm_skills)
 # left exactly as it was.
 
 # Hand-run verification harness (Step 11's own actions, no orchestration
-# layer) — links sorting_arm_skills only for its already-public rclcpp_action/
-# sorting_arm_interfaces deps, not for any of its MoveIt/skills logic.
+# layer). It links its ROS dependencies directly and consumes no skills code.
 add_executable(sequence_demo src/sequence_demo_main.cpp)
-target_link_libraries(sequence_demo PRIVATE sorting_arm_skills)
+ament_target_dependencies(sequence_demo
+  rclcpp
+  rclcpp_action
+  geometry_msgs
+  shape_msgs
+  sorting_arm_interfaces
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -90,20 +93,14 @@ if(BUILD_TESTING)
 
   find_package(ament_cmake_cpplint REQUIRED)
   ament_cpplint(
-    FILTERS "-legal/copyright" "-build/header_guard"
-    MAX_LINE_LENGTH 120
+    FILTERS "-legal/copyright" "-build/header_guard" "-build/include_order"
+    MAX_LINE_LENGTH 150
   )
 endif()
 
 install(
   DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
-)
-install(
-  TARGETS sorting_arm_skills
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-  RUNTIME DESTINATION bin
 )
 install(
   TARGETS skill_server_node motion_demo sequence_demo

@@ -13,38 +13,27 @@
 #include "sorting_arm_skills/scene_manager.hpp"
 #include "sorting_arm_skills/types.hpp"
 
-namespace {
-
-void print_result(const rclcpp::Logger& logger, const sorting_arm::SkillResult& result) {
-  RCLCPP_INFO(logger, "result: ok=%s phase=%s native_code=%d message=%s", result.ok ? "true" : "false",
-              result.phase.c_str(), result.native_code, result.message.c_str());
+static void print_result(const rclcpp::Logger& logger, const sorting_arm::SkillResult& result) {
+  RCLCPP_INFO(logger, "result: ok=%s phase=%s native_code=%d message=%s", result.ok ? "true" : "false", result.phase.c_str(), result.native_code,
+              result.message.c_str());
 }
-
-}  // namespace
 
 // One-shot, parameter-driven proof of each reusable API: pick one operation by
 // parameter, run it once, print the result, exit.
 class MotionDemo {
  public:
-  explicit MotionDemo(std::shared_ptr<rclcpp::Node> node) {
+  explicit MotionDemo(rclcpp::Node::SharedPtr node) {
     node_ = node;
 
-    // frames.* is declared once here and handed to whichever single commander
-    // run() builds below — never declared a second time on the same node.
-    planning_frame_ = node_->declare_parameter<std::string>("frames.planning_frame", "world");
-    tcp_link_ = node_->declare_parameter<std::string>("frames.tcp_link", "tcp");
-
     operation_ = node_->declare_parameter<std::string>("operation", "");
-    if (operation_ != "named" && operation_ != "joint" && operation_ != "pose" && operation_ != "cartesian" &&
-        operation_ != "apply_scene") {
-      throw std::runtime_error(
-          "set -p operation:=<named|joint|pose|cartesian|apply_scene>, plus that operation's targets");
+    if (operation_ != "named" && operation_ != "joint" && operation_ != "pose" && operation_ != "cartesian" && operation_ != "apply_scene") {
+      throw std::runtime_error("set -p operation:=<named|joint|pose|cartesian|apply_scene>, plus that operation's targets");
     }
 
     target_name_ = node_->declare_parameter<std::string>("target_name", "");
     joint_values_ = node_->declare_parameter<std::vector<double>>("joint_values", std::vector<double>{});
 
-    pose_target_.header.frame_id = node_->declare_parameter<std::string>("frame_id", planning_frame_);
+    pose_target_.header.frame_id = node_->declare_parameter<std::string>("frame_id", "world");
     pose_target_.pose.position.x = node_->declare_parameter<double>("x", std::nan(""));
     pose_target_.pose.position.y = node_->declare_parameter<double>("y", std::nan(""));
     pose_target_.pose.position.z = node_->declare_parameter<double>("z", std::nan(""));
@@ -53,7 +42,7 @@ class MotionDemo {
     pose_target_.pose.orientation.z = node_->declare_parameter<double>("qz", std::nan(""));
     pose_target_.pose.orientation.w = node_->declare_parameter<double>("qw", std::nan(""));
 
-    RCLCPP_INFO(node_->get_logger(), "operation=%s planning_frame=%s", operation_.c_str(), planning_frame_.c_str());
+    RCLCPP_INFO(node_->get_logger(), "operation=%s frame_id=%s", operation_.c_str(), pose_target_.header.frame_id.c_str());
   }
 
   // Builds only the commander the chosen operation needs — SceneManager's
@@ -61,12 +50,12 @@ class MotionDemo {
   // joint/pose/cartesian run must never pay that cost for nothing.
   sorting_arm::SkillResult run() {
     if (operation_ == "apply_scene") {
-      sorting_arm::SceneManager scene(node_, planning_frame_, tcp_link_);
+      sorting_arm::SceneManager scene(node_);
       return scene.apply_static_scene();
     }
 
     if (operation_ == "named") {
-      sorting_arm::MotionCommander motion(node_, planning_frame_, tcp_link_);
+      sorting_arm::MotionCommander motion(node_);
       return motion.move_to_named(target_name_);
     }
 
@@ -76,18 +65,16 @@ class MotionDemo {
       }
       std::array<double, 6> joints{};
       std::copy(joint_values_.begin(), joint_values_.end(), joints.begin());
-      sorting_arm::MotionCommander motion(node_, planning_frame_, tcp_link_);
+      sorting_arm::MotionCommander motion(node_);
       return motion.move_to_joints(joints);
     }
 
-    sorting_arm::MotionCommander motion(node_, planning_frame_, tcp_link_);
+    sorting_arm::MotionCommander motion(node_);
     return (operation_ == "pose") ? motion.move_to_pose(pose_target_) : motion.move_cartesian_to(pose_target_);
   }
 
  private:
-  std::shared_ptr<rclcpp::Node> node_;
-  std::string planning_frame_;
-  std::string tcp_link_;
+  rclcpp::Node::SharedPtr node_;
   std::string operation_;
   std::string target_name_;
   std::vector<double> joint_values_;
@@ -111,14 +98,16 @@ int main(int argc, char* argv[]) {
   // unconditionally keeps every operation's setup identical.
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
-  auto spin_thread = std::thread([&executor]() { executor.spin(); });
+  std::jthread spin_thread([&executor](std::stop_token stop_token) {
+    std::stop_callback cancel_on_stop(stop_token, [&executor]() { executor.cancel(); });
+    executor.spin();
+  });
 
   const auto result = demo->run();
   print_result(node->get_logger(), result);
 
   const int exit_code = result.ok ? 0 : 1;
-  executor.cancel();
-  spin_thread.join();
+  spin_thread.request_stop();
   rclcpp::shutdown();
   return exit_code;
 }

@@ -41,6 +41,10 @@ arm_controller:
 gripper_controller:
   ros__parameters:
     joint: robotiq_85_left_knuckle_joint
-    # default false aborts the goal outright on a stall — we want the SUCCEEDED
-    # branch instead, so close() reaches its own jaw measurement, not an abort
+    # default false aborts the goal on contact, but close() needs the native
+    # stalled result to confirm the grasp
     allow_stalling: true
+    # dart contact has small velocity spikes, so we use our measured quiet band
+    # and a short window to finish close once the fingers settle
+    stall_velocity_threshold: 0.02
+    stall_timeout: 0.2

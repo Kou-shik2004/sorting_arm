@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -19,35 +20,32 @@ namespace sorting_arm {
 // retreat. Shares `state` with Pick/Home so only one of the three ever runs.
 class PlaceServerNode {
  public:
-  PlaceServerNode(std::shared_ptr<rclcpp::Node> node, std::shared_ptr<MotionCommander> motion,
-                  std::shared_ptr<SceneManager> scene, std::shared_ptr<GripperCommander> gripper,
-                  std::shared_ptr<SkillState> state);
+  PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper, SkillState& state);
 
  private:
   using Place = sorting_arm_interfaces::action::Place;
   using GoalHandle = rclcpp_action::ServerGoalHandle<Place>;
 
-  rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID& uuid,
-                                          std::shared_ptr<const Place::Goal> goal);
+  rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const Place::Goal> goal);
   rclcpp_action::CancelResponse handle_cancel(std::shared_ptr<GoalHandle> goal_handle);
   void handle_accepted(std::shared_ptr<GoalHandle> goal_handle);
   void run(std::stop_token stop_token, std::shared_ptr<GoalHandle> goal_handle);
 
-  SkillResult place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& destination_centre,
-                    double half_height_m, std::stop_token stop_token, std::shared_ptr<Place::Feedback> feedback,
-                    std::shared_ptr<GoalHandle> goal_handle);
+  SkillResult place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& destination_centre, double half_height_m,
+                    std::stop_token stop_token, std::shared_ptr<Place::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle);
 
-  std::shared_ptr<rclcpp::Node> node_;
-  std::shared_ptr<MotionCommander> motion_;
-  std::shared_ptr<SceneManager> scene_;
-  std::shared_ptr<GripperCommander> gripper_;
-  std::shared_ptr<SkillState> state_;
+  rclcpp::Node::SharedPtr node_;
+  MotionCommander& motion_;
+  SceneManager& scene_;
+  GripperCommander& gripper_;
+  SkillState& state_;
 
   double approach_height_m_ = 0.0;
   double retreat_height_m_ = 0.0;
   double grasp_offset_m_ = 0.0;
 
   rclcpp_action::Server<Place>::SharedPtr server_;
+  std::jthread worker_;
 };
 
 }  // namespace sorting_arm

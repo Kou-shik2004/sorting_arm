@@ -65,8 +65,11 @@ in [Gripper controller configuration mismatch](gripper-controller-configuration.
 ## Resolution
 
 Use `MoveGroupInterface` for arm motion and `control_msgs/action/GripperCommand`
-directly for gripper motion. Keep the SRDF gripper group for semantic modelling and
-RViz configuration; do not make it the runtime command path.
+directly for gripper motion. The client uses `0.0` for open and `0.8` for close,
+matching the SRDF named-state values, and populates maximum effort `50.0`, matching
+the URDF joint limit. It does not create a gripper `MoveGroupInterface`, parse either
+description, or calculate a target from object width. Keep the SRDF gripper group for
+semantic modelling and RViz configuration; do not make it the runtime command path.
 
 Before proposing a configuration change for an implementation failure, check the applicable
 architectural decision and confirm that the failing program uses the intended abstraction. Do not

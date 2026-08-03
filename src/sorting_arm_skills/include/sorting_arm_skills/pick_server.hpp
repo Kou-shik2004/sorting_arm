@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -16,13 +17,11 @@
 
 namespace sorting_arm {
 
-// The Pick action server: open, pre-grasp, descend, close, verify, attach,
-// retreat. Shares `state` with Place/Home so only one of the three ever runs.
+// The Pick action server: open, pre-grasp, descend, close, attach, retreat.
+// Shares `state` with Place/Home so only one of the three ever runs.
 class PickServerNode {
  public:
-  PickServerNode(std::shared_ptr<rclcpp::Node> node, std::shared_ptr<MotionCommander> motion,
-                 std::shared_ptr<SceneManager> scene, std::shared_ptr<GripperCommander> gripper,
-                 std::shared_ptr<SkillState> state);
+  PickServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper, SkillState& state);
 
  private:
   using Pick = sorting_arm_interfaces::action::Pick;
@@ -35,20 +34,19 @@ class PickServerNode {
 
   // The pick sequence itself. Returns as soon as a step fails or reports
   // cancellation.
-  SkillResult pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre,
-                   double half_height_m, double width_m, std::stop_token stop_token,
-                   std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle);
+  SkillResult pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre, double half_height_m,
+                   std::stop_token stop_token, std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle);
 
   // Runs body() with object_id's grasp contacts allowed, then always restores
   // the collision matrix — a restore failure is folded into body's result
   // instead of silently dropped.
   SkillResult with_grasp_contacts_disabled(const std::string& object_id, const std::function<SkillResult()>& body);
 
-  std::shared_ptr<rclcpp::Node> node_;
-  std::shared_ptr<MotionCommander> motion_;
-  std::shared_ptr<SceneManager> scene_;
-  std::shared_ptr<GripperCommander> gripper_;
-  std::shared_ptr<SkillState> state_;
+  rclcpp::Node::SharedPtr node_;
+  MotionCommander& motion_;
+  SceneManager& scene_;
+  GripperCommander& gripper_;
+  SkillState& state_;
 
   double approach_height_m_ = 0.0;
   double retreat_height_m_ = 0.0;
@@ -56,6 +54,10 @@ class PickServerNode {
   int max_pre_grasp_candidates_ = 0;
 
   rclcpp_action::Server<Pick>::SharedPtr server_;
+
+  // Declared last so destruction requests stop and joins before any borrowed
+  // dependency can be destroyed by skill_server_main.cpp.
+  std::jthread worker_;
 };
 
 }  // namespace sorting_arm

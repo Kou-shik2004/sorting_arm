@@ -1,6 +1,27 @@
 # Closed RCA: Gripper grasp was unstable in simulation
 
-**Closed at Iteration 13.** `/pick` returns `ok: true` through `attach`/`retreat`/`verify_hold`
+> **Superseded implementation:** On 2026-08-04 the width-minus-squeeze, jaw-gap,
+> symmetry, timeout fallback, and `verify_hold` code was removed. The active design
+> sends the fixed SRDF endpoints through `GripperCommand` and accepts a close only
+> when the controller reports `stalled=true`. This report remains historical evidence.
+
+## 2026-08-04 direct-close follow-up
+
+The first full sequence after removing the camera path constraint reached
+`close_gripper` and visibly contacted `red_box_1`, but the action produced no terminal
+result before the ten-second client deadline. Cancellation froze the gripper at its
+current position. Recovery Home then failed start-state collision checking because the
+unattached box still touched `robotiq_85_right_finger_tip_link`.
+
+The active direct-close design depends on the controller's native stalled result. The
+working tree therefore restores the measured `stall_velocity_threshold=0.02` and uses a
+`stall_timeout=0.2` quiet window. This is a controller-completion correction, not a
+return to object-width targeting or jaw-gap verification. Static validation cannot prove
+the setting distinguishes empty travel from settled contact. Koushik reported a
+successful full sequence after restarting the application, so the contact-close path is
+accepted. An isolated empty-close result remains unreported.
+
+**Closed at Iteration 13.** `/pick` returned `ok: true` through `attach`/`retreat`/`verify_hold`
 against `red_box_1`, confirmed on two consecutive Gate C runs (2026-08-01). The
 investigation ran Iterations 0–13 across two sessions. This file is a restructured
 version of that record: the verdict, every ruled-out cause, and every mechanism worth
@@ -9,8 +30,9 @@ source quotes, and superseded status snapshots are compressed into the table bel
 full original narrative is in git history at this file's pre-restructure revision
 (`3586ad8`, merged as `bfb9279` on `main`).
 
-Do not restart the investigation from the original gripper parameters. Read "Ruled out"
-before repeating any check.
+This report explains the removed workaround and simulator history. It does not define
+the active gripper contract; current runtime failures must be diagnosed from the direct
+`GripperCommand` result first.
 
 ## Overview
 
@@ -20,7 +42,7 @@ lift the cube and drop it during retreat, with no code change between identical-
 runs. `/home` succeeded consistently throughout; the failure was always downstream of the
 grasp sequence starting.
 
-## Verdict — three combined causes, none sufficient alone
+## Historical verdict — three combined causes, none sufficient alone
 
 1. **The close target moved off the mechanical hard stop** (Iteration 12).
    `close_position: 0.8` is the knuckle's URDF upper limit; a 40 mm cube stops the joint at
@@ -29,7 +51,7 @@ grasp sequence starting.
    × error × update_rate`, gain `0.1`, rate `100 Hz`, never overridden) turned that into a
    continuous `3.52 rad/s` demand on a joint rated `0.5 rad/s`. Every iteration from 0
    through 11 shows the same shaking/chattering symptom because of this; nothing before
-   Iteration 12 touched it. Fix: `close(object_width_m)` now targets the knuckle angle for
+   Iteration 12 touched it. That iteration changed `close(object_width_m)` to target the knuckle angle for
    `object_width_m − squeeze_depth_m` — a derived window, `1.10–5.52 mm` past contact —
    never the hard stop.
 2. **The physics engine moved to `dart`** (Iteration 12, a platform decision, not a fix
@@ -43,7 +65,7 @@ grasp sequence starting.
    `GripperActionController` never resolved a terminal result on either Gate C run — a
    periodic `+0.15 rad/s` velocity reading, recurring every 0.3–1.4 sim-seconds during
    sustained rigid contact under `dart`, kept resetting the controller's 1.0 s
-   quiet-window requirement. `close()` now measures the jaw directly (gap + fingertip
+   quiet-window requirement. The Iteration 13 implementation measured the jaw directly (gap + fingertip
    symmetry from `/joint_states`) on a `"gripper result timed out"` failure instead of
    treating the timeout as proof nothing was caught, because the client's own cancel
    triggers `set_hold_position()`, which freezes the target wherever the joint already is
@@ -150,8 +172,8 @@ under the Iteration 12 engine switch). This is also why `arm_stack`'s
 Humble/Fortress/`ign_ros2_control` `<ros2_control>` shape does not transfer: it only ever
 had one enforcer to begin with.
 
-**The jaw-gap closed form is the measurement basis for the whole fix**, now living in
-`helpers.hpp`/`.cpp` (`jaw_gap_m`/`knuckle_angle_for_gap_m`) instead of only in this file:
+**Historical jaw-gap calculation, removed from production code.** Iterations 12 and 13
+used this calculation as their measurement basis:
 
 ```
 gap(th) = 2 × (c + a·cos(th) − b·sin(th)),  a = 0.0371575, b = 0.04342168, c = 0.03060114 − 0.02526
@@ -224,12 +246,14 @@ than "engine-side, tied to sustained rigid contact."
 ## Open
 
 - **The `dart`-side periodic `+0.15 rad/s` velocity artifact** during sustained contact —
-  measured, unexplained beyond "engine-side, tied to rigid contact." It no longer blocks
-  `/pick` (verification no longer depends on the controller resolving it), but it would
-  block any future consumer of this controller's own terminal result.
-- **The SRDF's `gripper_close` named state** (`sorting_arm.srdf`) still specifies `0.8` — a
-  MoveIt named state the skills close path has never used and still does not. Left as-is;
-  not part of this RCA's scope.
+  measured, unexplained beyond "engine-side, tied to rigid contact." The active close
+  path now requires the controller's terminal `stalled=true` result. The active
+  `0.02 rad/s` quiet band and `0.2 s` window are a runtime gate: an empty close must reach
+  its goal, while contact close must report stalled. Do not restore jaw measurement or
+  timeout-as-contact logic.
+- **The SRDF's `gripper_close` named state** (`sorting_arm.srdf`) specifies `0.8`. The
+  active direct-action client now uses that same numeric endpoint without planning a
+  MoveIt gripper trajectory.
 
 ## Reproduction
 
@@ -244,4 +268,3 @@ than "engine-side, tied to sustained rigid contact."
 - `docs/project/decisions.md` D24 — the `dart` physics engine choice.
 - `docs/rca/gripper-controller-configuration.md` — `GripperActionController`'s full
   declared parameter set, verified against the installed generated header.
-

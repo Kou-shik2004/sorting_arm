@@ -20,4 +20,3 @@
 
     result_timeout_s: 180.0
     stop_on_failure: true
-    planning_frame: "world"

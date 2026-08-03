@@ -18,14 +18,11 @@ int main(int argc, char* argv[]) {
   auto node = std::make_shared<rclcpp::Node>("skill_server_node");
 
   try {
-    const auto planning_frame = node->declare_parameter<std::string>("frames.planning_frame", "world");
-    const auto tcp_link = node->declare_parameter<std::string>("frames.tcp_link", "tcp");
+    sorting_arm::MotionCommander motion(node);
+    sorting_arm::GripperCommander gripper(node);
+    sorting_arm::SceneManager scene(node);
 
-    auto motion = std::make_shared<sorting_arm::MotionCommander>(node, planning_frame, tcp_link);
-    auto gripper = std::make_shared<sorting_arm::GripperCommander>(node);
-    auto scene = std::make_shared<sorting_arm::SceneManager>(node, planning_frame, tcp_link);
-
-    const auto scene_result = scene->apply_static_scene();
+    const auto scene_result = scene.apply_static_scene();
     if (!scene_result.ok) {
       RCLCPP_FATAL(node->get_logger(), "static scene apply failed: %s", scene_result.message.c_str());
       throw std::runtime_error("sorting_arm_skills: " + scene_result.message);
@@ -33,30 +30,28 @@ int main(int argc, char* argv[]) {
 
     // shared across all four servers: one manipulation goal at a time (D6),
     // and the object id Pick hands to Place
-    auto state = std::make_shared<sorting_arm::SkillState>();
+    sorting_arm::SkillState state;
 
     // servers are created after motion/scene/gripper/state and the static
     // collision scene all already exist — nothing can accept a goal before then
-    auto pick_server = std::make_shared<sorting_arm::PickServerNode>(node, motion, scene, gripper, state);
-    auto place_server = std::make_shared<sorting_arm::PlaceServerNode>(node, motion, scene, gripper, state);
-    auto home_server = std::make_shared<sorting_arm::HomeServerNode>(node, motion, state);
+    sorting_arm::PickServerNode pick_server(node, motion, scene, gripper, state);
+    sorting_arm::PlaceServerNode place_server(node, motion, scene, gripper, state);
+    sorting_arm::HomeServerNode home_server(node, motion, state);
 
     // SyncObjects is a small, stateless service call — it doesn't need a
     // class of its own, just the lock_if_idle() guard sync needs to be safe
     // against a running Pick/Place/Home worker touching SceneManager at the
     // same time.
     auto sync_objects_service = node->create_service<sorting_arm_interfaces::srv::SyncObjects>(
-        "sync_objects",
-        [scene, state](std::shared_ptr<sorting_arm_interfaces::srv::SyncObjects::Request> request,
-                       std::shared_ptr<sorting_arm_interfaces::srv::SyncObjects::Response> response) {
-          auto lock = state->lock_if_idle();
+        "sync_objects", [&scene, &state](std::shared_ptr<sorting_arm_interfaces::srv::SyncObjects::Request> request,
+                                         std::shared_ptr<sorting_arm_interfaces::srv::SyncObjects::Response> response) {
+          auto lock = state.lock_if_idle();
           if (!lock) {
             response->result =
-                sorting_arm::to_msg(sorting_arm::skill_error(
-                    "scene_apply", "cannot sync objects while a manipulation goal is active"));
+                sorting_arm::to_msg(sorting_arm::skill_error("scene_apply", "cannot sync objects while a manipulation goal is active"));
             return;
           }
-          response->result = sorting_arm::to_msg(scene->sync_objects(request->objects));
+          response->result = sorting_arm::to_msg(scene.sync_objects(request->objects));
         });
 
     rclcpp::spin(node);

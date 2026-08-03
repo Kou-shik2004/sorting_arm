@@ -15,8 +15,6 @@
 #include "sorting_arm_interfaces/msg/detected_object.hpp"
 #include "sorting_arm_interfaces/srv/sync_objects.hpp"
 
-namespace {
-
 // One row of the objects/destinations catalogue — see config/sequence_demo.yaml.
 struct ObjectSpec {
   std::string id;
@@ -44,16 +42,15 @@ struct ObjectOutcome {
 // no shared library needed, this is the only caller.
 template <typename ActionT>
 bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_action::Client<ActionT>::SharedPtr& client,
-               const typename ActionT::Goal& goal, double timeout_s, const std::string& label,
-               sorting_arm_interfaces::msg::SkillResult& out_result) {
+                const typename ActionT::Goal& goal, double timeout_s, const std::string& label,
+                sorting_arm_interfaces::msg::SkillResult& out_result) {
   using GoalHandle = rclcpp_action::ClientGoalHandle<ActionT>;
   const auto timeout = std::chrono::duration<double>(timeout_s);
   auto last_phase = std::make_shared<std::string>();
 
   typename rclcpp_action::Client<ActionT>::SendGoalOptions options;
-  options.feedback_callback = [node, label, last_phase](
-                                  typename GoalHandle::SharedPtr,
-                                  const std::shared_ptr<const typename ActionT::Feedback> feedback) {
+  options.feedback_callback = [node, label, last_phase](typename GoalHandle::SharedPtr,
+                                                        const std::shared_ptr<const typename ActionT::Feedback> feedback) {
     if (feedback->phase != *last_phase) {
       *last_phase = feedback->phase;
       RCLCPP_INFO(node->get_logger(), "%s: phase=%s", label.c_str(), last_phase->c_str());
@@ -80,19 +77,15 @@ bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_actio
   // the server populates Result on abort/cancel too (goal_handle->abort(result) still
   // sends it) — read it before deciding success, or the real failure reason is lost
   if (!wrapped.result) {
-    RCLCPP_ERROR(node->get_logger(), "%s: action ended with code=%d and no result message", label.c_str(),
-                static_cast<int>(wrapped.code));
+    RCLCPP_ERROR(node->get_logger(), "%s: action ended with code=%d and no result message", label.c_str(), static_cast<int>(wrapped.code));
     return false;
   }
 
   out_result = wrapped.result->result;
-  RCLCPP_INFO(node->get_logger(), "%s result: code=%d ok=%s phase=%s native_code=%d message=%s", label.c_str(),
-              static_cast<int>(wrapped.code), out_result.ok ? "true" : "false", out_result.phase.c_str(),
-              out_result.native_code, out_result.message.c_str());
+  RCLCPP_INFO(node->get_logger(), "%s result: code=%d ok=%s phase=%s native_code=%d message=%s", label.c_str(), static_cast<int>(wrapped.code),
+              out_result.ok ? "true" : "false", out_result.phase.c_str(), out_result.native_code, out_result.message.c_str());
   return wrapped.code == rclcpp_action::ResultCode::SUCCEEDED && out_result.ok;
 }
-
-}  // namespace
 
 // Hand-run verification harness, same mould as motion_demo: sync every
 // configured object, home, then pick+place each in order, home again, print a
@@ -105,7 +98,7 @@ class SequenceDemo {
   using Place = sorting_arm_interfaces::action::Place;
   using SyncObjects = sorting_arm_interfaces::srv::SyncObjects;
 
-  explicit SequenceDemo(std::shared_ptr<rclcpp::Node> node) : node_(std::move(node)) {
+  explicit SequenceDemo(rclcpp::Node::SharedPtr node) : node_(std::move(node)) {
     const std::vector<std::string> no_strings;
     const std::vector<double> no_doubles;
 
@@ -122,23 +115,21 @@ class SequenceDemo {
     const auto dest_z = node_->declare_parameter<std::vector<double>>("destination_z", no_doubles);
     result_timeout_s_ = node_->declare_parameter<double>("result_timeout_s", 180.0);
     stop_on_failure_ = node_->declare_parameter<bool>("stop_on_failure", true);
-    planning_frame_ = node_->declare_parameter<std::string>("planning_frame", "world");
 
     const std::size_t n = ids.size();
-    const bool consistent = n > 0 && labels.size() == n && centre_x.size() == n && centre_y.size() == n &&
-                            centre_z.size() == n && size_x.size() == n && size_y.size() == n && size_z.size() == n &&
-                            dest_x.size() == n && dest_y.size() == n && dest_z.size() == n;
+    const bool consistent = n > 0 && labels.size() == n && centre_x.size() == n && centre_y.size() == n && centre_z.size() == n &&
+                            size_x.size() == n && size_y.size() == n && size_z.size() == n && dest_x.size() == n && dest_y.size() == n &&
+                            dest_z.size() == n;
     if (!consistent) {
-      throw std::runtime_error(
-          "objects/object_label/object_centre_*/object_size_*/destination_* must all be the same, non-zero length");
+      throw std::runtime_error("objects/object_label/object_centre_*/object_size_*/destination_* must all be the same, non-zero length");
     }
     if (result_timeout_s_ <= 0.0) {
       throw std::runtime_error("result_timeout_s must be positive");
     }
 
     for (std::size_t i = 0; i < n; ++i) {
-      objects_.push_back(ObjectSpec{ids[i], labels[i], centre_x[i], centre_y[i], centre_z[i], size_x[i], size_y[i],
-                                    size_z[i], dest_x[i], dest_y[i], dest_z[i]});
+      objects_.push_back(
+          ObjectSpec{ids[i], labels[i], centre_x[i], centre_y[i], centre_z[i], size_x[i], size_y[i], size_z[i], dest_x[i], dest_y[i], dest_z[i]});
     }
 
     sync_client_ = node_->create_client<SyncObjects>("sync_objects");
@@ -177,21 +168,19 @@ class SequenceDemo {
       Pick::Goal pick_goal;
       pick_goal.object_id = spec.id;
       sorting_arm_interfaces::msg::SkillResult pick_result;
-      outcome.pick_ok = run_action<Pick>(node_, pick_client_, pick_goal, result_timeout_s_, "pick " + spec.id,
-                                        pick_result);
+      outcome.pick_ok = run_action<Pick>(node_, pick_client_, pick_goal, result_timeout_s_, "pick " + spec.id, pick_result);
       outcome.message = pick_result.message;
 
       if (outcome.pick_ok) {
         Place::Goal place_goal;
         place_goal.object_id = spec.id;
-        place_goal.destination.header.frame_id = planning_frame_;
+        place_goal.destination.header.frame_id = "world";
         place_goal.destination.pose.position.x = spec.destination_x;
         place_goal.destination.pose.position.y = spec.destination_y;
         place_goal.destination.pose.position.z = spec.destination_z;
         place_goal.destination.pose.orientation.w = 1.0;
         sorting_arm_interfaces::msg::SkillResult place_result;
-        outcome.place_ok = run_action<Place>(node_, place_client_, place_goal, result_timeout_s_,
-                                            "place " + spec.id, place_result);
+        outcome.place_ok = run_action<Place>(node_, place_client_, place_goal, result_timeout_s_, "place " + spec.id, place_result);
         if (!outcome.place_ok) {
           outcome.message = place_result.message;
         }
@@ -200,7 +189,9 @@ class SequenceDemo {
       outcomes.push_back(outcome);
       if (!(outcome.pick_ok && outcome.place_ok)) {
         all_ok = false;
-        if (stop_on_failure_) break;
+        if (stop_on_failure_) {
+          break;
+        }
       }
     }
 
@@ -218,7 +209,7 @@ class SequenceDemo {
       sorting_arm_interfaces::msg::DetectedObject detected;
       detected.id = spec.id;
       detected.label = spec.label;
-      detected.centre.header.frame_id = planning_frame_;
+      detected.centre.header.frame_id = "world";
       detected.centre.pose.position.x = spec.centre_x;
       detected.centre.pose.position.y = spec.centre_y;
       detected.centre.pose.position.z = spec.centre_z;
@@ -229,31 +220,32 @@ class SequenceDemo {
     }
 
     auto future = sync_client_->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(node_, future, std::chrono::duration<double>(result_timeout_s_)) !=
-        rclcpp::FutureReturnCode::SUCCESS) {
+    if (rclcpp::spin_until_future_complete(node_, future, std::chrono::duration<double>(result_timeout_s_)) != rclcpp::FutureReturnCode::SUCCESS) {
       RCLCPP_ERROR(node_->get_logger(), "sync_objects response timed out");
       return false;
     }
     const auto response = future.get();
-    RCLCPP_INFO(node_->get_logger(), "sync_objects result: ok=%s message=%s",
-                response->result.ok ? "true" : "false", response->result.message.c_str());
+    if (response == nullptr) {
+      RCLCPP_ERROR(node_->get_logger(), "sync_objects returned no response");
+      return false;
+    }
+    RCLCPP_INFO(node_->get_logger(), "sync_objects result: ok=%s message=%s", response->result.ok ? "true" : "false",
+                response->result.message.c_str());
     return response->result.ok;
   }
 
   void print_summary(const std::vector<ObjectOutcome>& outcomes) const {
     RCLCPP_INFO(node_->get_logger(), "sequence summary:");
     for (const auto& outcome : outcomes) {
-      RCLCPP_INFO(node_->get_logger(), "  %s: pick=%s place=%s %s", outcome.id.c_str(),
-                  outcome.pick_ok ? "ok" : "FAIL", outcome.place_ok ? "ok" : "FAIL", outcome.message.c_str());
+      RCLCPP_INFO(node_->get_logger(), "  %s: pick=%s place=%s %s", outcome.id.c_str(), outcome.pick_ok ? "ok" : "FAIL",
+                  outcome.place_ok ? "ok" : "FAIL", outcome.message.c_str());
     }
   }
 
-  std::shared_ptr<rclcpp::Node> node_;
+  rclcpp::Node::SharedPtr node_;
   std::vector<ObjectSpec> objects_;
   double result_timeout_s_ = 0.0;
   bool stop_on_failure_ = true;
-  std::string planning_frame_;
-
   rclcpp::Client<SyncObjects>::SharedPtr sync_client_;
   rclcpp_action::Client<Home>::SharedPtr home_client_;
   rclcpp_action::Client<Pick>::SharedPtr pick_client_;
