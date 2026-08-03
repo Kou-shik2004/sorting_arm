@@ -1,6 +1,8 @@
 <launch>
 
     <arg name="gui" default="true" />
+    <arg name="rviz_config"
+        default="$(find-pkg-share sorting_arm_bringup)/rviz/final_moveit.rviz" />
 
     <append_env name="GZ_SIM_RESOURCE_PATH" value="$(find-pkg-share sorting_arm_description)/.." />
     <let name="urdf_file_path"
@@ -11,7 +13,6 @@
         value="$(find-pkg-share sorting_arm_bringup)/config/gz_bridge.yaml" />
     <let name="world_file_path"
         value="$(find-pkg-share sorting_arm_bringup)/worlds/sorting_cell.sdf" />
-    <let name="rviz_file_path" value="$(find-pkg-share sorting_arm_bringup)/rviz/final_moveit.rviz" />
 
     <node pkg="ros_gz_bridge" exec="parameter_bridge">
         <param name="config_file" value="$(var gazebo_config_path)" />
@@ -53,7 +54,7 @@
     <include file="$(find-pkg-share sorting_arm_moveit)/launch/move_group.launch.py" />
 
     <group if="$(var gui)">
-        <node pkg="rviz2" exec="rviz2" args="-d $(var rviz_file_path)" />
+        <node pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)" />
     </group>
 
 </launch>

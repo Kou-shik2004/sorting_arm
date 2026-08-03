@@ -58,6 +58,64 @@
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </xacro:robotiq_gripper>
 
+  <link name="$(arg tf_prefix)camera_mount_link">
+    <visual>
+      <origin xyz="0 -0.03 0.015" rpy="2.677945 0 0"/>
+      <geometry>
+        <box size="0.01 0.067082 0.01"/>
+      </geometry>
+      <material name="camera_black">
+        <color rgba="0.02 0.02 0.02 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0.03 0.015" rpy="2.677945 0 0"/>
+      <geometry>
+        <box size="0.01 0.067082 0.01"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.000003833333" ixy="0" ixz="0" iyy="0.000000166667" iyz="0" izz="0.000003833333"/>
+    </inertial>
+  </link>
+  <joint name="$(arg tf_prefix)camera_mount_joint" type="fixed">
+    <parent link="$(arg tf_prefix)tool0"/>
+    <child link="$(arg tf_prefix)camera_mount_link"/>
+  </joint>
+
+  <link name="$(arg tf_prefix)camera_link">
+    <visual>
+      <geometry>
+        <box size="0.035 0.025 0.025"/>
+      </geometry>
+      <material name="camera_black">
+        <color rgba="0.02 0.02 0.02 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.035 0.025 0.025"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.02"/>
+      <inertia ixx="0.000002083333" ixy="0" ixz="0" iyy="0.000003083333" iyz="0" izz="0.000003083333"/>
+    </inertial>
+  </link>
+  <joint name="$(arg tf_prefix)camera_joint" type="fixed">
+    <parent link="$(arg tf_prefix)camera_mount_link"/>
+    <child link="$(arg tf_prefix)camera_link"/>
+    <origin xyz="0 -0.06 0.03" rpy="0 ${-pi/2} 0"/>
+  </joint>
+
+  <link name="$(arg tf_prefix)camera_link_optical"/>
+  <joint name="$(arg tf_prefix)camera_optical_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    <parent link="$(arg tf_prefix)camera_link"/>
+    <child link="$(arg tf_prefix)camera_link_optical"/>
+  </joint>
+
   <link name="$(arg tf_prefix)tcp"/>
   <joint name="$(arg tf_prefix)tcp_joint" type="fixed">
     <parent link="$(arg tf_prefix)robotiq_85_base_link"/>

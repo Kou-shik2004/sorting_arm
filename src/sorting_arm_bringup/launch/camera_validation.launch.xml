@@ -1,0 +1,9 @@
+<launch>
+
+    <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim.launch.xml">
+        <arg name="gui" value="true" />
+        <arg name="rviz_config"
+            value="$(find-pkg-share sorting_arm_bringup)/rviz/cam2.rviz" />
+    </include>
+
+</launch>
