@@ -35,6 +35,7 @@ class MotionCommander {
   SkillResult move_to_joints(const std::array<double, 6>& joint_values);
   SkillResult move_to_pose(const geometry_msgs::msg::PoseStamped& target);
   SkillResult move_cartesian_to(const geometry_msgs::msg::PoseStamped& target);
+  SkillResult current_tcp_pose(geometry_msgs::msg::PoseStamped& pose) const;
 
   // we split planning from execution here because Pick must reject a branch
   // whose vertical descent collides before the arm moves

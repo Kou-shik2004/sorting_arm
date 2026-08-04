@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <future>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -69,12 +70,9 @@ moveit_msgs::msg::CollisionObject SceneManager::load_box_set(const std::string& 
   return object;
 }
 
-SceneManager::SceneManager(rclcpp::Node::SharedPtr node)
-    : node_(std::move(node)), scene_interface_(std::make_unique<moveit::planning_interface::PlanningSceneInterface>()) {
+SceneManager::SceneManager(rclcpp::Node::SharedPtr node) : node_(std::move(node)) {
   service_timeout_s_ = node_->declare_parameter<double>("scene.service_timeout_s", 5.0);
-  if (!std::isfinite(service_timeout_s_) || service_timeout_s_ <= 0.0) {
-    throw std::runtime_error("scene.service_timeout_s must be positive");
-  }
+  require_positive_parameter("scene.service_timeout_s", service_timeout_s_);
 
   static_objects_.push_back(load_box_set("scene.table"));
   static_objects_.push_back(load_box_set("scene.red_tray"));
@@ -109,7 +107,7 @@ SkillResult SceneManager::apply_and_verify_allowed_collision_matrix(const moveit
   moveit_msgs::msg::PlanningScene scene;
   scene.is_diff = true;
   scene.allowed_collision_matrix = matrix;
-  if (!scene_interface_->applyPlanningScene(scene)) {
+  if (!scene_interface_.applyPlanningScene(scene)) {
     return skill_error("grasp_contacts", operation + ": applyPlanningScene failed");
   }
 
@@ -131,7 +129,7 @@ SkillResult SceneManager::begin_grasp_contacts(const std::string& object_id) {
   if (known_dynamic_objects_.find(object_id) == known_dynamic_objects_.end()) {
     return skill_error("grasp_contacts", "object '" + object_id + "' was never synced into the scene");
   }
-  if (scene_interface_->getObjects({object_id}).count(object_id) != 1 || scene_interface_->getAttachedObjects({object_id}).count(object_id) != 0) {
+  if (scene_interface_.getObjects({object_id}).count(object_id) != 1 || scene_interface_.getAttachedObjects({object_id}).count(object_id) != 0) {
     return skill_error("grasp_contacts", "object '" + object_id + "' is not world-present/attached-absent");
   }
 
@@ -176,7 +174,7 @@ SkillResult SceneManager::end_grasp_contacts() {
 }
 
 SkillResult SceneManager::apply_static_scene() {
-  if (!scene_interface_->applyCollisionObjects(static_objects_)) {
+  if (!scene_interface_.applyCollisionObjects(static_objects_)) {
     return skill_error("scene_apply", "applyCollisionObjects failed for the static table/tray scene");
   }
 
@@ -184,7 +182,7 @@ SkillResult SceneManager::apply_static_scene() {
   for (const auto& object : static_objects_) {
     ids.push_back(object.id);
   }
-  const auto known = scene_interface_->getObjects(ids);
+  const auto known = scene_interface_.getObjects(ids);
   if (known.size() != ids.size()) {
     return skill_error("scene_apply", "static scene objects missing from a getObjects query after apply");
   }
@@ -246,7 +244,7 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
     }
   }
 
-  if (!to_apply.empty() && !scene_interface_->applyCollisionObjects(to_apply)) {
+  if (!to_apply.empty() && !scene_interface_.applyCollisionObjects(to_apply)) {
     return skill_error("scene_apply", "applyCollisionObjects failed while syncing detected objects");
   }
 
@@ -254,12 +252,12 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
   for (const auto& entry : new_objects) {
     expected_ids.push_back(entry.first);
   }
-  const auto present = scene_interface_->getObjects(expected_ids);
+  const auto present = scene_interface_.getObjects(expected_ids);
   if (present.size() != new_objects.size()) {
     return skill_error("scene_apply", "not every synced object was present in a getObjects query after apply");
   }
   // getObjects({}) means all world objects, so an empty stale set needs no query
-  if (!stale_ids.empty() && !scene_interface_->getObjects(stale_ids).empty()) {
+  if (!stale_ids.empty() && !scene_interface_.getObjects(stale_ids).empty()) {
     return skill_error("scene_apply", "a stale object remained in the scene after synchronization");
   }
 
@@ -267,27 +265,38 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
   return skill_ok("scene_apply");
 }
 
-SkillResult SceneManager::attach(const std::string& object_id) {
+SkillResult SceneManager::attach_at_pose(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre) {
   const auto it = known_dynamic_objects_.find(object_id);
   if (it == known_dynamic_objects_.end()) {
     return skill_error("attach", "object '" + object_id + "' was never synced into the scene");
   }
+  if (!validate_pose(object_centre, "world")) {
+    return skill_error("attach", "object centre pose failed frame/finite validation");
+  }
+  if (it->second.primitive_poses.size() != 1) {
+    return skill_error("attach", "object '" + object_id + "' does not have exactly one primitive pose");
+  }
+
+  moveit_msgs::msg::CollisionObject object = it->second;
+  object.header.frame_id = "world";
+  object.primitive_poses.front() = object_centre.pose;
 
   moveit_msgs::msg::AttachedCollisionObject attached;
   attached.link_name = "tcp";
   attached.touch_links = kTouchLinks;
-  attached.object = it->second;
+  attached.object = object;
   attached.object.operation = moveit_msgs::msg::CollisionObject::ADD;
 
-  if (!scene_interface_->applyAttachedCollisionObject(attached)) {
+  if (!scene_interface_.applyAttachedCollisionObject(attached)) {
     return skill_error("attach", "applyAttachedCollisionObject failed for '" + object_id + "'");
   }
 
-  const auto attached_now = scene_interface_->getAttachedObjects({object_id});
-  const auto world_now = scene_interface_->getObjects({object_id});
+  const auto attached_now = scene_interface_.getAttachedObjects({object_id});
+  const auto world_now = scene_interface_.getObjects({object_id});
   if (attached_now.count(object_id) != 1 || world_now.count(object_id) != 0) {
     return skill_error("attach", "attach did not produce attached-present/world-absent for '" + object_id + "'");
   }
+  known_dynamic_objects_[object_id] = std::move(object);
   return skill_ok("attach");
 }
 
@@ -305,7 +314,7 @@ SkillResult SceneManager::detach_and_place(const std::string& object_id, const g
   detach_msg.object.id = object_id;
   detach_msg.object.header.frame_id = "world";
   detach_msg.object.operation = moveit_msgs::msg::CollisionObject::REMOVE;
-  if (!scene_interface_->applyAttachedCollisionObject(detach_msg)) {
+  if (!scene_interface_.applyAttachedCollisionObject(detach_msg)) {
     return skill_error("detach_reinsert", "detaching '" + object_id + "' failed");
   }
 
@@ -316,12 +325,12 @@ SkillResult SceneManager::detach_and_place(const std::string& object_id, const g
   if (!reinsert.primitive_poses.empty()) {
     reinsert.primitive_poses[0] = placed_centre.pose;
   }
-  if (!scene_interface_->applyCollisionObject(reinsert)) {
+  if (!scene_interface_.applyCollisionObject(reinsert)) {
     return skill_error("detach_reinsert", "reinserting '" + object_id + "' failed");
   }
 
-  const auto attached_now = scene_interface_->getAttachedObjects({object_id});
-  const auto world_now = scene_interface_->getObjects({object_id});
+  const auto attached_now = scene_interface_.getAttachedObjects({object_id});
+  const auto world_now = scene_interface_.getObjects({object_id});
   if (attached_now.count(object_id) != 0 || world_now.count(object_id) != 1) {
     return skill_error("detach_reinsert", "detach/reinsert did not produce world-present/attached-absent for '" + object_id + "'");
   }

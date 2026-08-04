@@ -1,14 +1,11 @@
 #include "sorting_arm_skills/place_server.hpp"
 
-#include <mutex>
-#include <stdexcept>
+#include <functional>
 #include <utility>
 
 #include "sorting_arm_skills/helpers.hpp"
 
 namespace sorting_arm {
-
-using namespace std::placeholders;
 
 PlaceServerNode::PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper,
                                  SkillState& state)
@@ -19,16 +16,13 @@ PlaceServerNode::PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& 
   retreat_height_m_ = declare_or_get<double>(*node_, "targets.retreat_height_m", 0.12);
   grasp_offset_m_ = declare_or_get<double>(*node_, "targets.grasp_offset_m", -0.036);
 
-  if (approach_height_m_ <= 0.0) {
-    throw std::runtime_error("targets.approach_height_m must be positive");
-  }
-  if (retreat_height_m_ <= 0.0) {
-    throw std::runtime_error("targets.retreat_height_m must be positive");
-  }
+  require_positive_parameter("targets.approach_height_m", approach_height_m_);
+  require_positive_parameter("targets.retreat_height_m", retreat_height_m_);
+  require_finite_parameter("targets.grasp_offset_m", grasp_offset_m_);
 
-  server_ = rclcpp_action::create_server<Place>(node_, "place", std::bind(&PlaceServerNode::handle_goal, this, _1, _2),
-                                                std::bind(&PlaceServerNode::handle_cancel, this, _1),
-                                                std::bind(&PlaceServerNode::handle_accepted, this, _1));
+  server_ = rclcpp_action::create_server<Place>(node_, "place", std::bind_front(&PlaceServerNode::handle_goal, this),
+                                                std::bind_front(&PlaceServerNode::handle_cancel, this),
+                                                std::bind_front(&PlaceServerNode::handle_accepted, this));
 }
 
 rclcpp_action::GoalResponse PlaceServerNode::handle_goal(const rclcpp_action::GoalUUID&, std::shared_ptr<const Place::Goal>) {

@@ -1,9 +1,34 @@
 # Closed RCA: Gripper grasp was unstable in simulation
 
-> **Superseded implementation:** On 2026-08-04 the width-minus-squeeze, jaw-gap,
-> symmetry, timeout fallback, and `verify_hold` code was removed. The active design
-> sends the fixed SRDF endpoints through `GripperCommand` and accepts a close only
-> when the controller reports `stalled=true`. This report remains historical evidence.
+> **Historical report:** The width-derived target and the later one-shot close are
+> both superseded. This report keeps the simulator evidence that led to the current
+> bounded-close design.
+
+## 2026-08-04 bounded-close follow-up
+
+The one-shot close sent the full `0.8 rad` target while a cube physically blocked the
+fingers much earlier. The controller then kept a large position error against the
+obstruction. Runtime images showed unstable finger contact, and a later run failed to
+plan the first Place motion after Pick had reported success.
+
+The current Pick closes through sequential absolute `GripperCommand` goals. Every next
+target starts from the freshly measured driven-joint position and advances by at most
+the configured `0.03 rad`, clamped to the robot's close limit. A controller-reported
+stall is only an obstruction candidate. Pick immediately replaces it with a hold at the
+measured terminal position, executes a `0.02 m` validation lift, and sends one small
+retention probe. Only a blocked probe is accepted before MoveIt attachment. The
+collision object's pose is propagated through the actual executed TCP transform before
+attachment.
+
+This path does not use object width, mesh-derived gripper geometry, or a target angle
+per object. The remaining numeric values are robot limits and runtime tunings owned by
+configuration.
+
+Koushik ran the full `sequence_demo` after this change and reported that the demo and
+grasp completed cleanly. The workspace also compiled cleanly before the runtime run.
+This is one successful runtime observation, not deterministic-test evidence. An
+isolated empty-close result and a recorded six-joint trace remain unreported, so the
+step and probe sizes remain measured tuning rather than a general grasp proof.
 
 ## 2026-08-04 direct-close follow-up
 
@@ -30,9 +55,9 @@ source quotes, and superseded status snapshots are compressed into the table bel
 full original narrative is in git history at this file's pre-restructure revision
 (`3586ad8`, merged as `bfb9279` on `main`).
 
-This report explains the removed workaround and simulator history. It does not define
-the active gripper contract; current runtime failures must be diagnosed from the direct
-`GripperCommand` result first.
+This report explains the removed workarounds and simulator history. The bounded-close
+follow-up above defines the current behavior; future failures must still be diagnosed
+from the native `GripperCommand` result first.
 
 ## Overview
 

@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
@@ -22,9 +23,7 @@ static void print_result(const rclcpp::Logger& logger, const sorting_arm::SkillR
 // parameter, run it once, print the result, exit.
 class MotionDemo {
  public:
-  explicit MotionDemo(rclcpp::Node::SharedPtr node) {
-    node_ = node;
-
+  explicit MotionDemo(rclcpp::Node::SharedPtr node) : node_(std::move(node)) {
     operation_ = node_->declare_parameter<std::string>("operation", "");
     if (operation_ != "named" && operation_ != "joint" && operation_ != "pose" && operation_ != "cartesian" && operation_ != "apply_scene") {
       throw std::runtime_error("set -p operation:=<named|joint|pose|cartesian|apply_scene>, plus that operation's targets");
@@ -85,29 +84,27 @@ int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("motion_demo");
 
-  std::unique_ptr<MotionDemo> demo;
+  int exit_code = 1;
   try {
-    demo = std::make_unique<MotionDemo>(node);
+    MotionDemo demo(node);
+
+    // MotionCommander/SceneManager need the executor already spinning;
+    // spinning unconditionally keeps every operation's setup identical.
+    rclcpp::executors::SingleThreadedExecutor executor;
+    executor.add_node(node);
+    std::jthread spin_thread([&executor](std::stop_token stop_token) {
+      std::stop_callback cancel_on_stop(stop_token, [&executor]() { executor.cancel(); });
+      executor.spin();
+    });
+
+    const auto result = demo.run();
+    print_result(node->get_logger(), result);
+    exit_code = result.ok ? 0 : 1;
+    spin_thread.request_stop();
   } catch (const std::exception& e) {
     RCLCPP_ERROR(node->get_logger(), "%s", e.what());
-    rclcpp::shutdown();
-    return 1;
   }
 
-  // MotionCommander/SceneManager need the executor already spinning; spinning
-  // unconditionally keeps every operation's setup identical.
-  rclcpp::executors::SingleThreadedExecutor executor;
-  executor.add_node(node);
-  std::jthread spin_thread([&executor](std::stop_token stop_token) {
-    std::stop_callback cancel_on_stop(stop_token, [&executor]() { executor.cancel(); });
-    executor.spin();
-  });
-
-  const auto result = demo->run();
-  print_result(node->get_logger(), result);
-
-  const int exit_code = result.ok ? 0 : 1;
-  spin_thread.request_stop();
   rclcpp::shutdown();
   return exit_code;
 }

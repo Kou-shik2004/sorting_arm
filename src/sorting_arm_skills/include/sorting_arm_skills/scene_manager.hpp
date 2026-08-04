@@ -1,7 +1,6 @@
 #pragma once
 
 #include <map>
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -34,7 +33,7 @@ class SceneManager {
 
   // Attaches a previously-synced object to the tcp link, then verifies
   // attached-present/world-absent.
-  SkillResult attach(const std::string& object_id);
+  SkillResult attach_at_pose(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre);
 
   // we allow only the target/touch-link pairs near grasp, then restore the
   // exact matrix so table and pedestal checks never disappear
@@ -63,7 +62,7 @@ class SceneManager {
 
   std::vector<moveit_msgs::msg::CollisionObject> static_objects_;
 
-  std::unique_ptr<moveit::planning_interface::PlanningSceneInterface> scene_interface_;
+  moveit::planning_interface::PlanningSceneInterface scene_interface_;
   rclcpp::Client<moveit_msgs::srv::GetPlanningScene>::SharedPtr get_scene_client_;
 
   std::optional<moveit_msgs::msg::AllowedCollisionMatrix> grasp_contacts_baseline_;

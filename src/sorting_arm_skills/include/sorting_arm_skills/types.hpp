@@ -9,7 +9,7 @@ namespace sorting_arm {
 // the gripper action gave back, 0 when there isn't one. phase names the step
 // that was running when this result was produced ("descend", "close_gripper",
 // ...), empty outside a multi-step sequence.
-struct SkillResult {
+struct [[nodiscard("skill result must be checked")]] SkillResult {
   bool ok = false;
   int native_code = 0;
   std::string phase;

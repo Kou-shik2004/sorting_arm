@@ -50,6 +50,7 @@ class PickServerNode {
 
   double approach_height_m_ = 0.0;
   double retreat_height_m_ = 0.0;
+  double grasp_validation_lift_m_ = 0.0;
   double grasp_offset_m_ = 0.0;
   int max_pre_grasp_candidates_ = 0;
 

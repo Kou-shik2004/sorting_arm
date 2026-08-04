@@ -1,6 +1,7 @@
 #include "sorting_arm_skills/home_server.hpp"
 
 #include <exception>
+#include <functional>
 #include <string>
 #include <utility>
 
@@ -8,13 +9,11 @@
 
 namespace sorting_arm {
 
-using namespace std::placeholders;
-
 HomeServerNode::HomeServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SkillState& state)
     : node_(std::move(node)), motion_(motion), state_(state) {
-  server_ =
-      rclcpp_action::create_server<Home>(node_, "home", std::bind(&HomeServerNode::handle_goal, this, _1, _2),
-                                         std::bind(&HomeServerNode::handle_cancel, this, _1), std::bind(&HomeServerNode::handle_accepted, this, _1));
+  server_ = rclcpp_action::create_server<Home>(node_, "home", std::bind_front(&HomeServerNode::handle_goal, this),
+                                               std::bind_front(&HomeServerNode::handle_cancel, this),
+                                               std::bind_front(&HomeServerNode::handle_accepted, this));
 }
 
 rclcpp_action::GoalResponse HomeServerNode::handle_goal(const rclcpp_action::GoalUUID&, std::shared_ptr<const Home::Goal>) {

@@ -1,35 +1,36 @@
 #include "sorting_arm_skills/pick_server.hpp"
 
+#include <Eigen/Geometry>
+#include <functional>
 #include <stdexcept>
 #include <utility>
 
 #include "sorting_arm_skills/helpers.hpp"
+#include "tf2_eigen/tf2_eigen.hpp"
 
 namespace sorting_arm {
-
-using namespace std::placeholders;
 
 PickServerNode::PickServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper,
                                SkillState& state)
     : node_(std::move(node)), motion_(motion), scene_(scene), gripper_(gripper), state_(state) {
   approach_height_m_ = declare_or_get<double>(*node_, "targets.approach_height_m", 0.12);
   retreat_height_m_ = declare_or_get<double>(*node_, "targets.retreat_height_m", 0.12);
+  grasp_validation_lift_m_ = declare_or_get<double>(*node_, "targets.grasp_validation_lift_m", 0.02);
   grasp_offset_m_ = declare_or_get<double>(*node_, "targets.grasp_offset_m", -0.036);
   max_pre_grasp_candidates_ = declare_or_get<int>(*node_, "targets.max_pre_grasp_candidates", 5);
 
-  if (approach_height_m_ <= 0.0) {
-    throw std::runtime_error("targets.approach_height_m must be positive");
+  require_positive_parameter("targets.approach_height_m", approach_height_m_);
+  require_positive_parameter("targets.retreat_height_m", retreat_height_m_);
+  require_positive_parameter("targets.grasp_validation_lift_m", grasp_validation_lift_m_);
+  if (grasp_validation_lift_m_ >= retreat_height_m_) {
+    throw std::runtime_error("targets.grasp_validation_lift_m must be smaller than targets.retreat_height_m");
   }
-  if (retreat_height_m_ <= 0.0) {
-    throw std::runtime_error("targets.retreat_height_m must be positive");
-  }
-  if (max_pre_grasp_candidates_ <= 0) {
-    throw std::runtime_error("targets.max_pre_grasp_candidates must be positive");
-  }
+  require_finite_parameter("targets.grasp_offset_m", grasp_offset_m_);
+  require_positive_parameter("targets.max_pre_grasp_candidates", max_pre_grasp_candidates_);
 
-  server_ =
-      rclcpp_action::create_server<Pick>(node_, "pick", std::bind(&PickServerNode::handle_goal, this, _1, _2),
-                                         std::bind(&PickServerNode::handle_cancel, this, _1), std::bind(&PickServerNode::handle_accepted, this, _1));
+  server_ = rclcpp_action::create_server<Pick>(node_, "pick", std::bind_front(&PickServerNode::handle_goal, this),
+                                               std::bind_front(&PickServerNode::handle_cancel, this),
+                                               std::bind_front(&PickServerNode::handle_accepted, this));
 }
 
 rclcpp_action::GoalResponse PickServerNode::handle_goal(const rclcpp_action::GoalUUID&, std::shared_ptr<const Pick::Goal>) {
@@ -158,11 +159,58 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
       return close_result;
     }
 
-    // close() only succeeds after the controller reports a stall, so no
-    // cancellation check can let an unconfirmed grasp reach the scene
+    geometry_msgs::msg::PoseStamped tcp_before_lift;
+    const auto before_pose_result = motion_.current_tcp_pose(tcp_before_lift);
+    if (!before_pose_result.ok) {
+      return before_pose_result;
+    }
+
+    if (enter_phase("validation_lift")) {
+      return skill_error("validation_lift", "cancellation requested");
+    }
+    const auto validation_target = retreat_pose(tcp_before_lift, grasp_validation_lift_m_);
+    const auto lift_result = motion_.move_cartesian_to(validation_target);
+    if (!lift_result.ok) {
+      return skill_error("validation_lift", lift_result.message, lift_result.native_code);
+    }
+
+    if (enter_phase("probe_grasp_retention")) {
+      return skill_error("probe_grasp_retention", "cancellation requested");
+    }
+    const auto probe_result = gripper_.probe_grasp_retention();
+    if (!probe_result.ok) {
+      return probe_result;
+    }
+
+    geometry_msgs::msg::PoseStamped tcp_after_lift;
+    const auto after_pose_result = motion_.current_tcp_pose(tcp_after_lift);
+    if (!after_pose_result.ok) {
+      return after_pose_result;
+    }
+    if (object_centre.header.frame_id != tcp_before_lift.header.frame_id || tcp_after_lift.header.frame_id != tcp_before_lift.header.frame_id) {
+      return skill_error("attach", "object and executed tcp poses do not share one world frame");
+    }
+
+    Eigen::Isometry3d world_tcp_before;
+    Eigen::Isometry3d world_tcp_after;
+    Eigen::Isometry3d world_object_before;
+    tf2::fromMsg(tcp_before_lift.pose, world_tcp_before);
+    tf2::fromMsg(tcp_after_lift.pose, world_tcp_after);
+    tf2::fromMsg(object_centre.pose, world_object_before);
+    const Eigen::Isometry3d tcp_object_before = world_tcp_before.inverse() * world_object_before;
+    const Eigen::Isometry3d world_object_after = world_tcp_after * tcp_object_before;
+    if (!world_object_after.matrix().allFinite()) {
+      return skill_error("attach", "executed tcp transform produced a non-finite object pose");
+    }
+
+    geometry_msgs::msg::PoseStamped lifted_object_centre = object_centre;
+    lifted_object_centre.pose = tf2::toMsg(world_object_after);
+
+    // once our probe passes we attach without a cancellation gap, otherwise a
+    // held object can be left outside the planning scene
     feedback->phase = "attach";
     goal_handle->publish_feedback(feedback);
-    return scene_.attach(object_id);
+    return scene_.attach_at_pose(object_id, lifted_object_centre);
   });
   if (!sequence_result.ok) {
     return sequence_result;

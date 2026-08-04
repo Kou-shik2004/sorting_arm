@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "control_msgs/action/gripper_command.hpp"
@@ -20,17 +21,28 @@ class GripperCommander {
 
   SkillResult open();
   SkillResult close();
+  SkillResult probe_grasp_retention();
 
  private:
   using GripperCommandAction = control_msgs::action::GripperCommand;
 
+  struct CommandOutcome {
+    rclcpp_action::ResultCode code = rclcpp_action::ResultCode::UNKNOWN;
+    GripperCommandAction::Result result;
+  };
+
   // A result timeout requests cancellation and waits for its response so an
   // unobserved goal is not left active.
-  SkillResult send_goal(double position, const std::string& phase, GripperCommandAction::Result& result, int& native_code);
+  SkillResult send_goal(double position, const std::string& phase, CommandOutcome& outcome);
+  SkillResult hold_position(double position, const std::string& phase, double& measured_position);
 
   rclcpp::Node::SharedPtr node_;
   double goal_timeout_s_ = 0.0;
   double result_timeout_s_ = 0.0;
+  double close_step_rad_ = 0.0;
+
+  std::optional<double> measured_position_;
+  std::optional<double> held_position_;
 
   rclcpp_action::Client<GripperCommandAction>::SharedPtr client_;
 };

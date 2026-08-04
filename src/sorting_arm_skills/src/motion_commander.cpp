@@ -35,30 +35,14 @@ MotionCommander::MotionCommander(rclcpp::Node::SharedPtr node) : node_(std::move
   min_fraction_ = node_->declare_parameter<double>("cartesian.min_fraction", 0.99);
   max_segment_duration_s_ = node_->declare_parameter<double>("cartesian.max_segment_duration_s", 15.0);
 
-  if (!std::isfinite(planning_time_s_) || planning_time_s_ <= 0.0) {
-    throw std::runtime_error("planning.planning_time_s must be positive");
-  }
-  if (planning_attempts_ <= 0) {
-    throw std::runtime_error("planning.planning_attempts must be positive");
-  }
-  if (!std::isfinite(parameter_service_timeout_s_) || parameter_service_timeout_s_ <= 0.0) {
-    throw std::runtime_error("planning.parameter_service_timeout_s must be positive");
-  }
-  if (!std::isfinite(velocity_scaling_) || velocity_scaling_ <= 0.0 || velocity_scaling_ > 1.0) {
-    throw std::runtime_error("planning.velocity_scaling must be in (0, 1]");
-  }
-  if (!std::isfinite(acceleration_scaling_) || acceleration_scaling_ <= 0.0 || acceleration_scaling_ > 1.0) {
-    throw std::runtime_error("planning.acceleration_scaling must be in (0, 1]");
-  }
-  if (!std::isfinite(eef_step_m_) || eef_step_m_ <= 0.0) {
-    throw std::runtime_error("cartesian.eef_step_m must be positive");
-  }
-  if (!std::isfinite(min_fraction_) || min_fraction_ <= 0.0 || min_fraction_ > 1.0) {
-    throw std::runtime_error("cartesian.min_fraction must be in (0, 1]");
-  }
-  if (!std::isfinite(max_segment_duration_s_) || max_segment_duration_s_ <= 0.0) {
-    throw std::runtime_error("cartesian.max_segment_duration_s must be positive");
-  }
+  require_positive_parameter("planning.parameter_service_timeout_s", parameter_service_timeout_s_);
+  require_positive_parameter("planning.planning_time_s", planning_time_s_);
+  require_positive_parameter("planning.planning_attempts", planning_attempts_);
+  require_unit_interval_parameter("planning.velocity_scaling", velocity_scaling_);
+  require_unit_interval_parameter("planning.acceleration_scaling", acceleration_scaling_);
+  require_positive_parameter("cartesian.eef_step_m", eef_step_m_);
+  require_unit_interval_parameter("cartesian.min_fraction", min_fraction_);
+  require_positive_parameter("cartesian.max_segment_duration_s", max_segment_duration_s_);
   arm_.setPoseReferenceFrame("world");
   arm_.setPlanningTime(planning_time_s_);
   arm_.setNumPlanningAttempts(static_cast<unsigned int>(planning_attempts_));
@@ -202,6 +186,18 @@ SkillResult MotionCommander::move_to_pose(const geometry_msgs::msg::PoseStamped&
     return skill_error("pose_motion", "pose execution failed", exec_result.val);
   }
   return skill_ok("pose_motion");
+}
+
+SkillResult MotionCommander::current_tcp_pose(geometry_msgs::msg::PoseStamped& pose) const {
+  if (arm_.getEndEffectorLink() != "tcp") {
+    return skill_error("tcp_pose", "commanded link is not the configured tcp link");
+  }
+
+  pose = arm_.getCurrentPose("tcp");
+  if (!validate_pose(pose, "world")) {
+    return skill_error("tcp_pose", "current tcp pose failed frame/finite validation");
+  }
+  return skill_ok("tcp_pose");
 }
 
 SkillResult MotionCommander::plan_pose_candidate(const geometry_msgs::msg::PoseStamped& target, PreparedPoseMotion& prepared) {

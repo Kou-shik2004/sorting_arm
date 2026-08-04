@@ -1,6 +1,8 @@
 #include "sorting_arm_skills/helpers.hpp"
 
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 namespace sorting_arm {
 
@@ -11,6 +13,30 @@ sorting_arm_interfaces::msg::SkillResult to_msg(const SkillResult& result) {
   msg.phase = result.phase;
   msg.message = result.message;
   return msg;
+}
+
+void require_positive_parameter(std::string_view name, double value) {
+  if (!std::isfinite(value) || value <= 0.0) {
+    throw std::runtime_error(std::string(name) + " must be positive and finite");
+  }
+}
+
+void require_positive_parameter(std::string_view name, int value) {
+  if (value <= 0) {
+    throw std::runtime_error(std::string(name) + " must be positive");
+  }
+}
+
+void require_unit_interval_parameter(std::string_view name, double value) {
+  if (!std::isfinite(value) || value <= 0.0 || value > 1.0) {
+    throw std::runtime_error(std::string(name) + " must be in (0, 1]");
+  }
+}
+
+void require_finite_parameter(std::string_view name, double value) {
+  if (!std::isfinite(value)) {
+    throw std::runtime_error(std::string(name) + " must be finite");
+  }
 }
 
 static bool finite_pose(const geometry_msgs::msg::Pose& pose) {

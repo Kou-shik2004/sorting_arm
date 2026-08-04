@@ -15,6 +15,13 @@ namespace sorting_arm {
 // SkillResult -> the wire shape embedded in every Pick/Place/Home result.
 sorting_arm_interfaces::msg::SkillResult to_msg(const SkillResult& result);
 
+// Parameter checks shared by constructors. Invalid startup configuration is
+// rejected instead of silently clamped to a different motion setting.
+void require_positive_parameter(std::string_view name, double value);
+void require_positive_parameter(std::string_view name, int value);
+void require_unit_interval_parameter(std::string_view name, double value);
+void require_finite_parameter(std::string_view name, double value);
+
 // Declares `name` with `fallback` the first time it's asked for on `node`,
 // returns the already-declared value every time after. Lets two servers on
 // the same node share targets.* without a second declare_parameter throwing
