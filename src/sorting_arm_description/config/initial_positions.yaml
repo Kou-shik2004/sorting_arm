@@ -1,0 +1,10 @@
+# Initial robot state used by mock hardware and Gazebo simulation.
+# Keep the arm values aligned with the SRDF "home" group state.
+initial_positions:
+  shoulder_pan_joint: -0.2829031522363639
+  shoulder_lift_joint: -1.5081944811661716
+  elbow_joint: 1.5323810801495170
+  wrist_1_joint: -1.5949829259833459
+  wrist_2_joint: -1.5707963265897928
+  wrist_3_joint: -1.8536994792363644
+  robotiq_85_left_knuckle_joint: 0.0

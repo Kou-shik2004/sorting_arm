@@ -1,0 +1,44 @@
+/**:
+  ros__parameters:
+    use_sim_time: true
+
+    expected_object_count: 4
+    cube_dimensions: [0.04, 0.04, 0.04]
+
+    source_area:
+      minimum: [0.35, -0.17, 0.50]
+      maximum: [0.57, 0.17, 0.55]
+
+    colour:
+      red_low_hue: [0, 10]
+      red_high_hue: [170, 179]
+      blue_hue: [100, 130]
+      minimum_saturation: 80
+      minimum_value: 80
+
+    detector:
+      minimum_contour_area: 400.0
+      minimum_top_face_area: 480
+      minimum_valid_depth_fraction: 0.70
+      top_depth_percentile: 0.20
+      top_depth_tolerance: 0.015
+      physical_size_tolerance: 0.015
+
+    synchronization:
+      maximum_interval: 0.010
+
+    capture_timeout: 0.5
+    transform_timeout: 0.2
+
+    registration:
+      verified: true
+
+    display:
+      motion_threshold_radians: 0.001
+      arm_joint_names:
+        - shoulder_pan_joint
+        - shoulder_lift_joint
+        - elbow_joint
+        - wrist_1_joint
+        - wrist_2_joint
+        - wrist_3_joint

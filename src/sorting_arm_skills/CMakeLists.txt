@@ -96,7 +96,7 @@ if(BUILD_TESTING)
   find_package(ament_cmake_cpplint REQUIRED)
   ament_cpplint(
     FILTERS "-legal/copyright" "-build/header_guard" "-build/include_order"
-    MAX_LINE_LENGTH 150
+    MAX_LINE_LENGTH 125
   )
 endif()
 

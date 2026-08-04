@@ -1,10 +1,10 @@
 # Default initial positions for sorting_arm's ros2_control fake system
 
 initial_positions:
-  elbow_joint: 0
-  robotiq_85_left_knuckle_joint: 0
-  shoulder_lift_joint: 0
-  shoulder_pan_joint: 0
-  wrist_1_joint: 0
-  wrist_2_joint: 0
-  wrist_3_joint: 0
+  elbow_joint: 1.5323810801495170
+  robotiq_85_left_knuckle_joint: 0.0
+  shoulder_lift_joint: -1.5081944811661716
+  shoulder_pan_joint: -0.2829031522363639
+  wrist_1_joint: -1.5949829259833459
+  wrist_2_joint: -1.5707963265897928
+  wrist_3_joint: -1.8536994792363644

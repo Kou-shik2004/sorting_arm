@@ -12,6 +12,7 @@ find_package(geometry_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   msg/DetectedObject.msg
   msg/SkillResult.msg
+  srv/DetectObjects.srv
   srv/SyncObjects.srv
   action/Pick.action
   action/Place.action

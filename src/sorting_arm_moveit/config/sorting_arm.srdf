@@ -22,14 +22,14 @@
     <group_state name="gripper_close" group="gripper">
         <joint name="robotiq_85_left_knuckle_joint" value="0.8"/>
     </group_state>
-    <!-- jogged and measured on the pedestal-raised arm, Step 0, see roadmap.md -->
+    <!-- arm-stack wrist-down home centered so our four cubes sit in the clear image area -->
     <group_state name="home" group="arm">
-        <joint name="shoulder_pan_joint" value="-0.017453"/>
-        <joint name="shoulder_lift_joint" value="-1.396263"/>
-        <joint name="elbow_joint" value="0.872665"/>
-        <joint name="wrist_1_joint" value="-2.635447"/>
-        <joint name="wrist_2_joint" value="-1.396263"/>
-        <joint name="wrist_3_joint" value="-0.017453"/>
+        <joint name="shoulder_pan_joint" value="-0.2829031522363639"/>
+        <joint name="shoulder_lift_joint" value="-1.5081944811661716"/>
+        <joint name="elbow_joint" value="1.5323810801495170"/>
+        <joint name="wrist_1_joint" value="-1.5949829259833459"/>
+        <joint name="wrist_2_joint" value="-1.5707963265897928"/>
+        <joint name="wrist_3_joint" value="-1.8536994792363644"/>
     </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="gripper" parent_link="tool0" group="gripper" parent_group="arm"/>

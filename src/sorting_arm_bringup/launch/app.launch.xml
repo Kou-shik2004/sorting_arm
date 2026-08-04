@@ -2,6 +2,7 @@
 
     <arg name="skills_config"
          default="$(find-pkg-share sorting_arm_skills)/config/skills.yaml"/>
+    <arg name="show_viewer" default="true"/>
 
     <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim_gui.launch.xml"/>
 
@@ -10,5 +11,9 @@
     <node pkg="sorting_arm_skills" exec="skill_server_node" output="screen">
         <param from="$(var skills_config)"/>
     </node>
+
+    <include file="$(find-pkg-share sorting_arm_perception)/launch/perception.launch.xml">
+        <arg name="show_viewer" value="$(var show_viewer)"/>
+    </include>
 
 </launch>

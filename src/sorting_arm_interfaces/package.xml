@@ -2,7 +2,7 @@
 <package format="3">
   <name>sorting_arm_interfaces</name>
   <version>0.0.0</version>
-  <description>Shared message, service, and action definitions between sorting_arm_skills and sorting_arm_executive.</description>
+  <description>Shared runtime messages, services, and actions for the sorting arm.</description>
   <maintainer email="koushik.s2022@vitstudent.ac.in">kratos</maintainer>
   <license>TODO: License declaration</license>
 

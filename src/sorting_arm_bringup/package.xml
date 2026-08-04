@@ -11,6 +11,8 @@
   <!-- the two packages moveit.launch.xml reaches into for the xacro and the move_group launch -->
   <exec_depend>sorting_arm_description</exec_depend>
   <exec_depend>sorting_arm_moveit</exec_depend>
+  <exec_depend>sorting_arm_perception</exec_depend>
+  <exec_depend>sorting_arm_skills</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
 
   <!-- nodes moveit.launch.xml starts by hand -->

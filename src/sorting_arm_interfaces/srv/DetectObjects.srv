@@ -1,0 +1,4 @@
+# Empty request: capture one complete observation from the selected provider.
+---
+DetectedObject[] objects
+SkillResult result

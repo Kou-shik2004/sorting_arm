@@ -1,6 +1,12 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://wiki.ros.org/xacro" name="sorting_arm">
 
+  <xacro:arg name="initial_positions_file"
+             default="$(find sorting_arm_description)/config/initial_positions.yaml"/>
+  <xacro:property name="initial_positions_file" value="$(arg initial_positions_file)"/>
+  <xacro:property name="initial_positions"
+                  value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
+
   <xacro:include filename="sorting_arm.xacro"/>
   <xacro:include filename="sorting_arm.ros2_control.xacro"/>
 

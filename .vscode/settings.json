@@ -2,10 +2,7 @@
     "ROS2.distro": "jazzy",
     "editor.parameterHints.enabled": true,
     "C_Cpp.autocompleteAddParentheses": true,
-    "C_Cpp.default.compileCommands": [
-        "${workspaceFolder}/build/sorting_arm_skills/compile_commands.json",
-        "${workspaceFolder}/build/sorting_arm_interfaces/compile_commands.json"
-    ],
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
     "C_Cpp.formatting": "clangFormat",
     "C_Cpp.clang_format_style": "file",
     "editor.formatOnSave": true,

@@ -60,7 +60,7 @@
 
   <link name="$(arg tf_prefix)camera_mount_link">
     <visual>
-      <origin xyz="0 -0.03 0.015" rpy="2.677945 0 0"/>
+      <origin xyz="0 -0.03 0.015" rpy="-0.463648 0 0"/>
       <geometry>
         <box size="0.01 0.067082 0.01"/>
       </geometry>
@@ -69,12 +69,13 @@
       </material>
     </visual>
     <collision>
-      <origin xyz="0 -0.03 0.015" rpy="2.677945 0 0"/>
+      <origin xyz="0 -0.03 0.015" rpy="-0.463648 0 0"/>
       <geometry>
         <box size="0.01 0.067082 0.01"/>
       </geometry>
     </collision>
     <inertial>
+      <origin xyz="0 -0.03 0.015" rpy="-0.463648 0 0"/>
       <mass value="0.01"/>
       <inertia ixx="0.000003833333" ixy="0" ixz="0" iyy="0.000000166667" iyz="0" izz="0.000003833333"/>
     </inertial>
