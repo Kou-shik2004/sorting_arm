@@ -15,8 +15,8 @@
 #include "sorting_arm_skills/types.hpp"
 
 static void print_result(const rclcpp::Logger& logger, const sorting_arm::SkillResult& result) {
-  RCLCPP_INFO(logger, "result: ok=%s phase=%s native_code=%d message=%s", result.ok ? "true" : "false", result.phase.c_str(), result.native_code,
-              result.message.c_str());
+  RCLCPP_INFO(logger, "result: ok=%s phase=%s native_code=%d message=%s", result.ok ? "true" : "false", result.phase.c_str(),
+              result.native_code, result.message.c_str());
 }
 
 // One-shot, parameter-driven proof of each reusable API: pick one operation by
@@ -25,7 +25,8 @@ class MotionDemo {
  public:
   explicit MotionDemo(rclcpp::Node::SharedPtr node) : node_(std::move(node)) {
     operation_ = node_->declare_parameter<std::string>("operation", "");
-    if (operation_ != "named" && operation_ != "joint" && operation_ != "pose" && operation_ != "cartesian" && operation_ != "apply_scene") {
+    if (operation_ != "named" && operation_ != "joint" && operation_ != "pose" && operation_ != "cartesian" &&
+        operation_ != "apply_scene") {
       throw std::runtime_error("set -p operation:=<named|joint|pose|cartesian|apply_scene>, plus that operation's targets");
     }
 

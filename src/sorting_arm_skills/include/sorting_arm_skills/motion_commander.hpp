@@ -40,7 +40,8 @@ class MotionCommander {
   // we split planning from execution here because Pick must reject a branch
   // whose vertical descent collides before the arm moves
   SkillResult plan_pose_candidate(const geometry_msgs::msg::PoseStamped& target, PreparedPoseMotion& prepared);
-  SkillResult plan_cartesian_from(const PreparedPoseMotion& start, const geometry_msgs::msg::PoseStamped& target, PreparedCartesianMotion& prepared);
+  SkillResult plan_cartesian_from(const PreparedPoseMotion& start, const geometry_msgs::msg::PoseStamped& target,
+                                  PreparedCartesianMotion& prepared);
   SkillResult execute_prepared_pose(const PreparedPoseMotion& prepared);
   SkillResult execute_prepared_cartesian(const PreparedCartesianMotion& prepared);
 
@@ -49,8 +50,9 @@ class MotionCommander {
 
   // computeCartesianPath from start_state to target, then TOTG retime — the one
   // path both move_cartesian_to and plan_cartesian_from need, so it lives once.
-  SkillResult compute_retimed_cartesian(const moveit::core::RobotState& start_state, const geometry_msgs::msg::PoseStamped& target,
-                                        const std::string& phase, moveit_msgs::msg::RobotTrajectory& trajectory_msg);
+  SkillResult compute_retimed_cartesian(const moveit::core::RobotState& start_state,
+                                        const geometry_msgs::msg::PoseStamped& target, const std::string& phase,
+                                        moveit_msgs::msg::RobotTrajectory& trajectory_msg);
   [[nodiscard]] bool accept_cartesian_fraction(double fraction) const;
   [[nodiscard]] bool accept_segment_duration(double duration_s) const;
 

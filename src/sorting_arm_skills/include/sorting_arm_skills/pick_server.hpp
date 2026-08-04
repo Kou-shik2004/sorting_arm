@@ -21,7 +21,8 @@ namespace sorting_arm {
 // Shares `state` with Place/Home so only one of the three ever runs.
 class PickServerNode {
  public:
-  PickServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper, SkillState& state);
+  PickServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper,
+                 SkillState& state);
 
  private:
   using Pick = sorting_arm_interfaces::action::Pick;
@@ -35,7 +36,8 @@ class PickServerNode {
   // The pick sequence itself. Returns as soon as a step fails or reports
   // cancellation.
   SkillResult pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre, double half_height_m,
-                   std::stop_token stop_token, std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle);
+                   std::stop_token stop_token, std::shared_ptr<Pick::Feedback> feedback,
+                   std::shared_ptr<GoalHandle> goal_handle);
 
   // Runs body() with object_id's grasp contacts allowed, then always restores
   // the collision matrix — a restore failure is folded into body's result

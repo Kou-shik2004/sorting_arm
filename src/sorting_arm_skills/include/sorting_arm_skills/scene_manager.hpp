@@ -55,7 +55,8 @@ class SceneManager {
  private:
   moveit_msgs::msg::CollisionObject load_box_set(const std::string& prefix);
   SkillResult query_allowed_collision_matrix(moveit_msgs::msg::AllowedCollisionMatrix& matrix);
-  SkillResult apply_and_verify_allowed_collision_matrix(const moveit_msgs::msg::AllowedCollisionMatrix& matrix, const std::string& operation);
+  SkillResult apply_and_verify_allowed_collision_matrix(const moveit_msgs::msg::AllowedCollisionMatrix& matrix,
+                                                        const std::string& operation);
 
   rclcpp::Node::SharedPtr node_;
   double service_timeout_s_ = 0.0;

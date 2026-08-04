@@ -28,7 +28,8 @@ class HomeServerNode {
   void handle_accepted(std::shared_ptr<GoalHandle> goal_handle);
   void run(std::stop_token stop_token, std::shared_ptr<GoalHandle> goal_handle);
 
-  SkillResult home(std::stop_token stop_token, std::shared_ptr<Home::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle);
+  SkillResult home(std::stop_token stop_token, std::shared_ptr<Home::Feedback> feedback,
+                   std::shared_ptr<GoalHandle> goal_handle);
 
   rclcpp::Node::SharedPtr node_;
   MotionCommander& motion_;

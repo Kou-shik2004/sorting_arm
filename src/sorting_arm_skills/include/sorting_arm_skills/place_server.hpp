@@ -20,7 +20,8 @@ namespace sorting_arm {
 // retreat. Shares `state` with Pick/Home so only one of the three ever runs.
 class PlaceServerNode {
  public:
-  PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper, SkillState& state);
+  PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper,
+                  SkillState& state);
 
  private:
   using Place = sorting_arm_interfaces::action::Place;
@@ -31,8 +32,9 @@ class PlaceServerNode {
   void handle_accepted(std::shared_ptr<GoalHandle> goal_handle);
   void run(std::stop_token stop_token, std::shared_ptr<GoalHandle> goal_handle);
 
-  SkillResult place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& destination_centre, double half_height_m,
-                    std::stop_token stop_token, std::shared_ptr<Place::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle);
+  SkillResult place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& destination_centre,
+                    double half_height_m, std::stop_token stop_token, std::shared_ptr<Place::Feedback> feedback,
+                    std::shared_ptr<GoalHandle> goal_handle);
 
   rclcpp::Node::SharedPtr node_;
   MotionCommander& motion_;

@@ -47,8 +47,8 @@ int main(int argc, char* argv[]) {
                                          std::shared_ptr<sorting_arm_interfaces::srv::SyncObjects::Response> response) {
           auto lock = state.lock_if_idle();
           if (!lock) {
-            response->result =
-                sorting_arm::to_msg(sorting_arm::skill_error("scene_apply", "cannot sync objects while a manipulation goal is active"));
+            response->result = sorting_arm::to_msg(
+                sorting_arm::skill_error("scene_apply", "cannot sync objects while a manipulation goal is active"));
             return;
           }
           response->result = sorting_arm::to_msg(scene.sync_objects(request->objects));

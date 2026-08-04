@@ -200,7 +200,8 @@ SkillResult MotionCommander::current_tcp_pose(geometry_msgs::msg::PoseStamped& p
   return skill_ok("tcp_pose");
 }
 
-SkillResult MotionCommander::plan_pose_candidate(const geometry_msgs::msg::PoseStamped& target, PreparedPoseMotion& prepared) {
+SkillResult MotionCommander::plan_pose_candidate(const geometry_msgs::msg::PoseStamped& target,
+                                                 PreparedPoseMotion& prepared) {
   if (!validate_pose(target, "world")) {
     return skill_error("pre_grasp", "pose target failed frame/finite validation");
   }
@@ -240,8 +241,10 @@ SkillResult MotionCommander::plan_pose_candidate(const geometry_msgs::msg::PoseS
   return skill_ok("pre_grasp");
 }
 
-SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::RobotState& start_state, const geometry_msgs::msg::PoseStamped& target,
-                                                       const std::string& phase, moveit_msgs::msg::RobotTrajectory& trajectory_msg) {
+SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::RobotState& start_state,
+                                                       const geometry_msgs::msg::PoseStamped& target,
+                                                       const std::string& phase,
+                                                       moveit_msgs::msg::RobotTrajectory& trajectory_msg) {
   if (!validate_pose(target, "world")) {
     return skill_error(phase, "cartesian target failed frame/finite validation");
   }
@@ -252,7 +255,8 @@ SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::Robot
   arm_.setStartState(start_state);
   const std::vector<geometry_msgs::msg::Pose> waypoints{target.pose};
   moveit_msgs::msg::MoveItErrorCodes error_code;
-  const double fraction = arm_.computeCartesianPath(waypoints, eef_step_m_, trajectory_msg, /*avoid_collisions=*/true, &error_code);
+  const double fraction =
+      arm_.computeCartesianPath(waypoints, eef_step_m_, trajectory_msg, /*avoid_collisions=*/true, &error_code);
   arm_.setStartStateToCurrentState();
 
   if (error_code.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
@@ -266,7 +270,8 @@ SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::Robot
   robot_traj.setRobotTrajectoryMsg(start_state, trajectory_msg);
 
   trajectory_processing::TimeOptimalTrajectoryGeneration totg;
-  if (!totg.computeTimeStamps(robot_traj, velocity_limits_, acceleration_limits_, velocity_scaling_, acceleration_scaling_)) {
+  if (!totg.computeTimeStamps(robot_traj, velocity_limits_, acceleration_limits_, velocity_scaling_,
+                              acceleration_scaling_)) {
     return skill_error(phase, "time-optimal retiming failed");
   }
   if (!accept_segment_duration(robot_traj.getDuration())) {
@@ -277,13 +282,16 @@ SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::Robot
   return skill_ok(phase);
 }
 
-bool MotionCommander::accept_cartesian_fraction(double fraction) const { return std::isfinite(fraction) && fraction >= min_fraction_; }
+bool MotionCommander::accept_cartesian_fraction(double fraction) const {
+  return std::isfinite(fraction) && fraction >= min_fraction_;
+}
 
 bool MotionCommander::accept_segment_duration(double duration_s) const {
   return std::isfinite(duration_s) && duration_s > 0.0 && duration_s <= max_segment_duration_s_;
 }
 
-SkillResult MotionCommander::plan_cartesian_from(const PreparedPoseMotion& start, const geometry_msgs::msg::PoseStamped& target,
+SkillResult MotionCommander::plan_cartesian_from(const PreparedPoseMotion& start,
+                                                 const geometry_msgs::msg::PoseStamped& target,
                                                  PreparedCartesianMotion& prepared) {
   if (start.terminal_state == nullptr) {
     return skill_error("descend_preflight", "pre-grasp candidate has no terminal robot state");

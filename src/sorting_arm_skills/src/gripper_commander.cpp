@@ -22,7 +22,8 @@ static constexpr double kMaxEffort = 50.0;
 static constexpr double kGoalTolerance = 0.01;
 
 static bool valid_measured_position(double position) {
-  return std::isfinite(position) && position >= kOpenPosition - kGoalTolerance && position <= kClosePosition + kGoalTolerance;
+  return std::isfinite(position) && position >= kOpenPosition - kGoalTolerance &&
+         position <= kClosePosition + kGoalTolerance;
 }
 
 static int native_code(rclcpp_action::ResultCode code) { return static_cast<int>(code); }
@@ -36,7 +37,8 @@ GripperCommander::GripperCommander(rclcpp::Node::SharedPtr node) : node_(std::mo
   require_positive_parameter("gripper.result_timeout_s", result_timeout_s_);
   require_positive_parameter("gripper.close_step_rad", close_step_rad_);
   if (close_step_rad_ <= kGoalTolerance || close_step_rad_ >= kClosePosition - kOpenPosition) {
-    throw std::runtime_error("gripper.close_step_rad must be greater than the 0.01 rad goal tolerance and smaller than the joint range");
+    throw std::runtime_error(
+        "gripper.close_step_rad must be greater than the 0.01 rad goal tolerance and smaller than the joint range");
   }
 
   client_ = rclcpp_action::create_client<GripperCommandAction>(node_, "/gripper_controller/gripper_cmd");
@@ -97,7 +99,8 @@ SkillResult GripperCommander::open() {
     return command_result;
   }
   if (outcome.code != rclcpp_action::ResultCode::SUCCEEDED) {
-    return skill_error("open_gripper", "gripper open goal finished with a non-success action result", native_code(outcome.code));
+    return skill_error("open_gripper", "gripper open goal finished with a non-success action result",
+                       native_code(outcome.code));
   }
   if (!outcome.result.reached_goal || outcome.result.stalled) {
     return skill_error("open_gripper", "gripper did not reach the open position", native_code(outcome.code));
@@ -156,26 +159,31 @@ SkillResult GripperCommander::close() {
     }
     if (outcome.code != rclcpp_action::ResultCode::SUCCEEDED) {
       if (outcome.result.stalled) {
-        return skill_error("close_gripper", "controller returned a stalled goal as non-success; allow_stalling=true contract is not active",
+        return skill_error("close_gripper",
+                           "controller returned a stalled goal as non-success; allow_stalling=true contract is not active",
                            native_code(outcome.code));
       }
-      return skill_error("close_gripper", "gripper close step finished with a non-success action result", native_code(outcome.code));
+      return skill_error("close_gripper", "gripper close step finished with a non-success action result",
+                         native_code(outcome.code));
     }
 
     if (outcome.result.reached_goal && !outcome.result.stalled) {
       if (outcome.result.position <= previous_position) {
-        return skill_error("close_gripper", "gripper reported reached_goal without forward measured motion", native_code(outcome.code));
+        return skill_error("close_gripper", "gripper reported reached_goal without forward measured motion",
+                           native_code(outcome.code));
       }
       measured_position_ = outcome.result.position;
       if (target == kClosePosition) {
-        return skill_error("close_gripper", "gripper reached the fully closed position; no obstruction was detected", native_code(outcome.code));
+        return skill_error("close_gripper", "gripper reached the fully closed position; no obstruction was detected",
+                           native_code(outcome.code));
       }
       continue;
     }
 
     if (outcome.result.stalled && !outcome.result.reached_goal) {
       if (outcome.result.position < previous_position) {
-        return skill_error("close_gripper", "gripper stalled after moving opposite the close direction", native_code(outcome.code));
+        return skill_error("close_gripper", "gripper stalled after moving opposite the close direction",
+                           native_code(outcome.code));
       }
 
       double held_position = 0.0;
@@ -185,12 +193,14 @@ SkillResult GripperCommander::close() {
       }
       measured_position_ = held_position;
       held_position_ = held_position;
-      RCLCPP_INFO(node_->get_logger(), "close obstruction candidate: step=%zu target=%.6f stalled_position=%.6f hold_position=%.6f", step_index,
+      RCLCPP_INFO(node_->get_logger(),
+                  "close obstruction candidate: step=%zu target=%.6f stalled_position=%.6f hold_position=%.6f", step_index,
                   target, outcome.result.position, held_position);
       return skill_ok("close_gripper");
     }
 
-    return skill_error("close_gripper", "gripper returned contradictory stalled/reached_goal flags", native_code(outcome.code));
+    return skill_error("close_gripper", "gripper returned contradictory stalled/reached_goal flags",
+                       native_code(outcome.code));
   }
 
   return skill_error("close_gripper", "bounded close exhausted its step limit without a terminal result");
@@ -212,21 +222,26 @@ SkillResult GripperCommander::probe_grasp_retention() {
     return command_result;
   }
   if (!valid_measured_position(outcome.result.position)) {
-    return skill_error("probe_grasp_retention", "gripper probe returned an invalid measured position", native_code(outcome.code));
+    return skill_error("probe_grasp_retention", "gripper probe returned an invalid measured position",
+                       native_code(outcome.code));
   }
   if (outcome.code != rclcpp_action::ResultCode::SUCCEEDED) {
     if (outcome.result.stalled) {
-      return skill_error("probe_grasp_retention", "controller returned a stalled probe as non-success; allow_stalling=true contract is not active",
+      return skill_error("probe_grasp_retention",
+                         "controller returned a stalled probe as non-success; allow_stalling=true contract is not active",
                          native_code(outcome.code));
     }
-    return skill_error("probe_grasp_retention", "gripper probe finished with a non-success action result", native_code(outcome.code));
+    return skill_error("probe_grasp_retention", "gripper probe finished with a non-success action result",
+                       native_code(outcome.code));
   }
   if (outcome.result.reached_goal && !outcome.result.stalled) {
-    return skill_error("probe_grasp_retention", "gripper reached the retention probe target; grasp is likely empty or dropped",
+    return skill_error("probe_grasp_retention",
+                       "gripper reached the retention probe target; grasp is likely empty or dropped",
                        native_code(outcome.code));
   }
   if (!outcome.result.stalled || outcome.result.reached_goal) {
-    return skill_error("probe_grasp_retention", "gripper probe returned contradictory stalled/reached_goal flags", native_code(outcome.code));
+    return skill_error("probe_grasp_retention", "gripper probe returned contradictory stalled/reached_goal flags",
+                       native_code(outcome.code));
   }
 
   double held_position = 0.0;
@@ -236,8 +251,8 @@ SkillResult GripperCommander::probe_grasp_retention() {
   }
   measured_position_ = held_position;
   held_position_ = held_position;
-  RCLCPP_INFO(node_->get_logger(), "retention obstruction candidate: target=%.6f stalled_position=%.6f hold_position=%.6f", probe_target,
-              outcome.result.position, held_position);
+  RCLCPP_INFO(node_->get_logger(), "retention obstruction candidate: target=%.6f stalled_position=%.6f hold_position=%.6f",
+              probe_target, outcome.result.position, held_position);
   return skill_ok("probe_grasp_retention");
 }
 

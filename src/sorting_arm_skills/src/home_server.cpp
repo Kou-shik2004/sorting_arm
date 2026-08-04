@@ -34,7 +34,8 @@ void HomeServerNode::handle_accepted(std::shared_ptr<GoalHandle> goal_handle) {
   worker_ = std::jthread([this, goal_handle](std::stop_token stop_token) { run(stop_token, goal_handle); });
 }
 
-SkillResult HomeServerNode::home(std::stop_token stop_token, std::shared_ptr<Home::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle) {
+SkillResult HomeServerNode::home(std::stop_token stop_token, std::shared_ptr<Home::Feedback> feedback,
+                                 std::shared_ptr<GoalHandle> goal_handle) {
   feedback->phase = "named_motion";
   goal_handle->publish_feedback(feedback);
   if (stop_token.stop_requested()) {

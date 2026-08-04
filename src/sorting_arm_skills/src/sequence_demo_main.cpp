@@ -77,13 +77,15 @@ bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_actio
   // the server populates Result on abort/cancel too (goal_handle->abort(result) still
   // sends it) — read it before deciding success, or the real failure reason is lost
   if (!wrapped.result) {
-    RCLCPP_ERROR(node->get_logger(), "%s: action ended with code=%d and no result message", label.c_str(), static_cast<int>(wrapped.code));
+    RCLCPP_ERROR(node->get_logger(), "%s: action ended with code=%d and no result message", label.c_str(),
+                 static_cast<int>(wrapped.code));
     return false;
   }
 
   out_result = wrapped.result->result;
-  RCLCPP_INFO(node->get_logger(), "%s result: code=%d ok=%s phase=%s native_code=%d message=%s", label.c_str(), static_cast<int>(wrapped.code),
-              out_result.ok ? "true" : "false", out_result.phase.c_str(), out_result.native_code, out_result.message.c_str());
+  RCLCPP_INFO(node->get_logger(), "%s result: code=%d ok=%s phase=%s native_code=%d message=%s", label.c_str(),
+              static_cast<int>(wrapped.code), out_result.ok ? "true" : "false", out_result.phase.c_str(),
+              out_result.native_code, out_result.message.c_str());
   return wrapped.code == rclcpp_action::ResultCode::SUCCEEDED && out_result.ok;
 }
 
@@ -117,19 +119,20 @@ class SequenceDemo {
     stop_on_failure_ = node_->declare_parameter<bool>("stop_on_failure", true);
 
     const std::size_t n = ids.size();
-    const bool consistent = n > 0 && labels.size() == n && centre_x.size() == n && centre_y.size() == n && centre_z.size() == n &&
-                            size_x.size() == n && size_y.size() == n && size_z.size() == n && dest_x.size() == n && dest_y.size() == n &&
-                            dest_z.size() == n;
+    const bool consistent = n > 0 && labels.size() == n && centre_x.size() == n && centre_y.size() == n &&
+                            centre_z.size() == n && size_x.size() == n && size_y.size() == n && size_z.size() == n &&
+                            dest_x.size() == n && dest_y.size() == n && dest_z.size() == n;
     if (!consistent) {
-      throw std::runtime_error("objects/object_label/object_centre_*/object_size_*/destination_* must all be the same, non-zero length");
+      throw std::runtime_error(
+          "objects/object_label/object_centre_*/object_size_*/destination_* must all be the same, non-zero length");
     }
     if (result_timeout_s_ <= 0.0) {
       throw std::runtime_error("result_timeout_s must be positive");
     }
 
     for (std::size_t i = 0; i < n; ++i) {
-      objects_.push_back(
-          ObjectSpec{ids[i], labels[i], centre_x[i], centre_y[i], centre_z[i], size_x[i], size_y[i], size_z[i], dest_x[i], dest_y[i], dest_z[i]});
+      objects_.push_back(ObjectSpec{ids[i], labels[i], centre_x[i], centre_y[i], centre_z[i], size_x[i], size_y[i],
+                                    size_z[i], dest_x[i], dest_y[i], dest_z[i]});
     }
 
     sync_client_ = node_->create_client<SyncObjects>("sync_objects");
@@ -180,7 +183,8 @@ class SequenceDemo {
         place_goal.destination.pose.position.z = spec.destination_z;
         place_goal.destination.pose.orientation.w = 1.0;
         sorting_arm_interfaces::msg::SkillResult place_result;
-        outcome.place_ok = run_action<Place>(node_, place_client_, place_goal, result_timeout_s_, "place " + spec.id, place_result);
+        outcome.place_ok =
+            run_action<Place>(node_, place_client_, place_goal, result_timeout_s_, "place " + spec.id, place_result);
         if (!outcome.place_ok) {
           outcome.message = place_result.message;
         }
@@ -220,7 +224,8 @@ class SequenceDemo {
     }
 
     auto future = sync_client_->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(node_, future, std::chrono::duration<double>(result_timeout_s_)) != rclcpp::FutureReturnCode::SUCCESS) {
+    if (rclcpp::spin_until_future_complete(node_, future, std::chrono::duration<double>(result_timeout_s_)) !=
+        rclcpp::FutureReturnCode::SUCCESS) {
       RCLCPP_ERROR(node_->get_logger(), "sync_objects response timed out");
       return false;
     }

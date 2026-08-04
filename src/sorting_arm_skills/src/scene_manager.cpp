@@ -21,8 +21,8 @@
 
 namespace sorting_arm {
 
-static const std::vector<std::string> kTouchLinks{"robotiq_85_left_finger_link", "robotiq_85_left_finger_tip_link", "robotiq_85_right_finger_link",
-                                                  "robotiq_85_right_finger_tip_link"};
+static const std::vector<std::string> kTouchLinks{"robotiq_85_left_finger_link", "robotiq_85_left_finger_tip_link",
+                                                  "robotiq_85_right_finger_link", "robotiq_85_right_finger_tip_link"};
 
 // Reads one compound box set (table or a tray: id + six parallel box arrays)
 // and builds its CollisionObject. See config/skills.yaml for what the numbers mean.
@@ -40,7 +40,8 @@ moveit_msgs::msg::CollisionObject SceneManager::load_box_set(const std::string& 
     throw std::runtime_error(prefix + ".id must be non-empty");
   }
   const std::size_t n = size_x.size();
-  const bool consistent = n > 0 && size_y.size() == n && size_z.size() == n && centre_x.size() == n && centre_y.size() == n && centre_z.size() == n;
+  const bool consistent = n > 0 && size_y.size() == n && size_z.size() == n && centre_x.size() == n &&
+                          centre_y.size() == n && centre_z.size() == n;
   if (!consistent) {
     throw std::runtime_error(prefix + ": box_size_*/box_centre_* arrays must all be the same, non-zero length");
   }
@@ -51,8 +52,9 @@ moveit_msgs::msg::CollisionObject SceneManager::load_box_set(const std::string& 
   object.operation = moveit_msgs::msg::CollisionObject::ADD;
 
   for (std::size_t i = 0; i < n; ++i) {
-    if (!std::isfinite(size_x[i]) || !std::isfinite(size_y[i]) || !std::isfinite(size_z[i]) || size_x[i] <= 0.0 || size_y[i] <= 0.0 ||
-        size_z[i] <= 0.0 || !std::isfinite(centre_x[i]) || !std::isfinite(centre_y[i]) || !std::isfinite(centre_z[i])) {
+    if (!std::isfinite(size_x[i]) || !std::isfinite(size_y[i]) || !std::isfinite(size_z[i]) || size_x[i] <= 0.0 ||
+        size_y[i] <= 0.0 || size_z[i] <= 0.0 || !std::isfinite(centre_x[i]) || !std::isfinite(centre_y[i]) ||
+        !std::isfinite(centre_z[i])) {
       throw std::runtime_error(prefix + ": every box needs finite centres and positive finite dimensions");
     }
 
@@ -129,7 +131,8 @@ SkillResult SceneManager::begin_grasp_contacts(const std::string& object_id) {
   if (known_dynamic_objects_.find(object_id) == known_dynamic_objects_.end()) {
     return skill_error("grasp_contacts", "object '" + object_id + "' was never synced into the scene");
   }
-  if (scene_interface_.getObjects({object_id}).count(object_id) != 1 || scene_interface_.getAttachedObjects({object_id}).count(object_id) != 0) {
+  if (scene_interface_.getObjects({object_id}).count(object_id) != 1 ||
+      scene_interface_.getAttachedObjects({object_id}).count(object_id) != 0) {
     return skill_error("grasp_contacts", "object '" + object_id + "' is not world-present/attached-absent");
   }
 
@@ -148,7 +151,8 @@ SkillResult SceneManager::begin_grasp_contacts(const std::string& object_id) {
   if (!apply_result.ok) {
     const auto restore_result = apply_and_verify_allowed_collision_matrix(baseline, "rollback grasp contacts");
     if (!restore_result.ok) {
-      return skill_error("grasp_contacts", apply_result.message + "; rollback failed: " + restore_result.message, restore_result.native_code);
+      return skill_error("grasp_contacts", apply_result.message + "; rollback failed: " + restore_result.message,
+                         restore_result.native_code);
     }
     return apply_result;
   }
@@ -265,7 +269,8 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
   return skill_ok("scene_apply");
 }
 
-SkillResult SceneManager::attach_at_pose(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre) {
+SkillResult SceneManager::attach_at_pose(const std::string& object_id,
+                                         const geometry_msgs::msg::PoseStamped& object_centre) {
   const auto it = known_dynamic_objects_.find(object_id);
   if (it == known_dynamic_objects_.end()) {
     return skill_error("attach", "object '" + object_id + "' was never synced into the scene");
@@ -300,7 +305,8 @@ SkillResult SceneManager::attach_at_pose(const std::string& object_id, const geo
   return skill_ok("attach");
 }
 
-SkillResult SceneManager::detach_and_place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& placed_centre) {
+SkillResult SceneManager::detach_and_place(const std::string& object_id,
+                                           const geometry_msgs::msg::PoseStamped& placed_centre) {
   const auto it = known_dynamic_objects_.find(object_id);
   if (it == known_dynamic_objects_.end()) {
     return skill_error("detach_reinsert", "object '" + object_id + "' has no known geometry to reinsert");
@@ -332,7 +338,8 @@ SkillResult SceneManager::detach_and_place(const std::string& object_id, const g
   const auto attached_now = scene_interface_.getAttachedObjects({object_id});
   const auto world_now = scene_interface_.getObjects({object_id});
   if (attached_now.count(object_id) != 0 || world_now.count(object_id) != 1) {
-    return skill_error("detach_reinsert", "detach/reinsert did not produce world-present/attached-absent for '" + object_id + "'");
+    return skill_error("detach_reinsert",
+                       "detach/reinsert did not produce world-present/attached-absent for '" + object_id + "'");
   }
 
   known_dynamic_objects_[object_id] = std::move(reinsert);
@@ -349,7 +356,8 @@ std::optional<SceneManager::ObjectGeometry> SceneManager::known_object_geometry(
     return std::nullopt;
   }
   const auto& primitive = object.primitives.front();
-  if (primitive.type != shape_msgs::msg::SolidPrimitive::BOX || primitive.dimensions.size() <= shape_msgs::msg::SolidPrimitive::BOX_Z) {
+  if (primitive.type != shape_msgs::msg::SolidPrimitive::BOX ||
+      primitive.dimensions.size() <= shape_msgs::msg::SolidPrimitive::BOX_Z) {
     return std::nullopt;
   }
 

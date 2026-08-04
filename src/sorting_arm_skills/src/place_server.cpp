@@ -7,8 +7,8 @@
 
 namespace sorting_arm {
 
-PlaceServerNode::PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper,
-                                 SkillState& state)
+PlaceServerNode::PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene,
+                                 GripperCommander& gripper, SkillState& state)
     : node_(std::move(node)), motion_(motion), scene_(scene), gripper_(gripper), state_(state) {
   // Same three targets.* Pick already declared on this node — declare_or_get
   // returns the existing value instead of throwing a second declare.
@@ -25,7 +25,8 @@ PlaceServerNode::PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& 
                                                 std::bind_front(&PlaceServerNode::handle_accepted, this));
 }
 
-rclcpp_action::GoalResponse PlaceServerNode::handle_goal(const rclcpp_action::GoalUUID&, std::shared_ptr<const Place::Goal>) {
+rclcpp_action::GoalResponse PlaceServerNode::handle_goal(const rclcpp_action::GoalUUID&,
+                                                         std::shared_ptr<const Place::Goal>) {
   if (!state_.try_claim()) {
     RCLCPP_WARN(node_->get_logger(), "rejecting Place goal: a manipulation goal is already active");
     return rclcpp_action::GoalResponse::REJECT;
@@ -43,8 +44,9 @@ void PlaceServerNode::handle_accepted(std::shared_ptr<GoalHandle> goal_handle) {
   worker_ = std::jthread([this, goal_handle](std::stop_token stop_token) { run(stop_token, goal_handle); });
 }
 
-SkillResult PlaceServerNode::place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& destination_centre, double half_height_m,
-                                   std::stop_token stop_token, std::shared_ptr<Place::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle) {
+SkillResult PlaceServerNode::place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& destination_centre,
+                                   double half_height_m, std::stop_token stop_token,
+                                   std::shared_ptr<Place::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle) {
   auto enter_phase = [&](const std::string& phase) {
     feedback->phase = phase;
     goal_handle->publish_feedback(feedback);
@@ -108,7 +110,8 @@ void PlaceServerNode::run(std::stop_token stop_token, std::shared_ptr<GoalHandle
     } else {
       const auto attached = state_.attached_object();
       if (!attached || *attached != goal->object_id) {
-        result->result = to_msg(skill_error("validate", "object '" + goal->object_id + "' is not the currently attached object"));
+        result->result =
+            to_msg(skill_error("validate", "object '" + goal->object_id + "' is not the currently attached object"));
         goal_handle->abort(result);
       } else {
         const auto geometry = scene_.known_object_geometry(goal->object_id);
@@ -117,7 +120,8 @@ void PlaceServerNode::run(std::stop_token stop_token, std::shared_ptr<GoalHandle
           goal_handle->abort(result);
         } else {
           auto feedback = std::make_shared<Place::Feedback>();
-          const auto outcome = place(goal->object_id, goal->destination, geometry->half_height_m, stop_token, feedback, goal_handle);
+          const auto outcome =
+              place(goal->object_id, goal->destination, geometry->half_height_m, stop_token, feedback, goal_handle);
           result->result = to_msg(outcome);
 
           if (goal_handle->is_canceling()) {

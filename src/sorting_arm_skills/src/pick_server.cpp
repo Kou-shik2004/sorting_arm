@@ -10,8 +10,8 @@
 
 namespace sorting_arm {
 
-PickServerNode::PickServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene, GripperCommander& gripper,
-                               SkillState& state)
+PickServerNode::PickServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SceneManager& scene,
+                               GripperCommander& gripper, SkillState& state)
     : node_(std::move(node)), motion_(motion), scene_(scene), gripper_(gripper), state_(state) {
   approach_height_m_ = declare_or_get<double>(*node_, "targets.approach_height_m", 0.12);
   retreat_height_m_ = declare_or_get<double>(*node_, "targets.retreat_height_m", 0.12);
@@ -51,7 +51,8 @@ void PickServerNode::handle_accepted(std::shared_ptr<GoalHandle> goal_handle) {
   worker_ = std::jthread([this, goal_handle](std::stop_token stop_token) { run(stop_token, goal_handle); });
 }
 
-SkillResult PickServerNode::with_grasp_contacts_disabled(const std::string& object_id, const std::function<SkillResult()>& body) {
+SkillResult PickServerNode::with_grasp_contacts_disabled(const std::string& object_id,
+                                                         const std::function<SkillResult()>& body) {
   const auto allow_result = scene_.begin_grasp_contacts(object_id);
   if (!allow_result.ok) {
     return allow_result;
@@ -69,8 +70,9 @@ SkillResult PickServerNode::with_grasp_contacts_disabled(const std::string& obje
   return skill_error("grasp_contacts", body_result.message + "; " + restore_result.message, restore_result.native_code);
 }
 
-SkillResult PickServerNode::pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre, double half_height_m,
-                                 std::stop_token stop_token, std::shared_ptr<Pick::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle) {
+SkillResult PickServerNode::pick(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre,
+                                 double half_height_m, std::stop_token stop_token, std::shared_ptr<Pick::Feedback> feedback,
+                                 std::shared_ptr<GoalHandle> goal_handle) {
   auto enter_phase = [&](const std::string& phase) {
     feedback->phase = phase;
     goal_handle->publish_feedback(feedback);
@@ -110,8 +112,8 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
     }
 
     MotionCommander::PreparedCartesianMotion candidate_descent;
-    const auto descent_result =
-        with_grasp_contacts_disabled(object_id, [&] { return motion_.plan_cartesian_from(candidate_pre_grasp, grasp, candidate_descent); });
+    const auto descent_result = with_grasp_contacts_disabled(
+        object_id, [&] { return motion_.plan_cartesian_from(candidate_pre_grasp, grasp, candidate_descent); });
 
     if (!descent_result.ok) {
       last_candidate_result = descent_result;
@@ -123,8 +125,8 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
     prepared_pre_grasp = std::move(candidate_pre_grasp);
     prepared_descent = std::move(candidate_descent);
     approach_prepared = true;
-    RCLCPP_INFO(node_->get_logger(), "selected pre-grasp candidate %d/%d after full Cartesian descent preflight", candidate_index,
-                max_pre_grasp_candidates_);
+    RCLCPP_INFO(node_->get_logger(), "selected pre-grasp candidate %d/%d after full Cartesian descent preflight",
+                candidate_index, max_pre_grasp_candidates_);
     break;
   }
 
@@ -187,7 +189,8 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
     if (!after_pose_result.ok) {
       return after_pose_result;
     }
-    if (object_centre.header.frame_id != tcp_before_lift.header.frame_id || tcp_after_lift.header.frame_id != tcp_before_lift.header.frame_id) {
+    if (object_centre.header.frame_id != tcp_before_lift.header.frame_id ||
+        tcp_after_lift.header.frame_id != tcp_before_lift.header.frame_id) {
       return skill_error("attach", "object and executed tcp poses do not share one world frame");
     }
 
@@ -242,7 +245,8 @@ void PickServerNode::run(std::stop_token stop_token, std::shared_ptr<GoalHandle>
         goal_handle->abort(result);
       } else {
         auto feedback = std::make_shared<Pick::Feedback>();
-        const auto outcome = pick(goal->object_id, geometry->centre, geometry->half_height_m, stop_token, feedback, goal_handle);
+        const auto outcome =
+            pick(goal->object_id, geometry->centre, geometry->half_height_m, stop_token, feedback, goal_handle);
         result->result = to_msg(outcome);
 
         if (goal_handle->is_canceling()) {

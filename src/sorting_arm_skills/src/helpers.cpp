@@ -40,8 +40,9 @@ void require_finite_parameter(std::string_view name, double value) {
 }
 
 static bool finite_pose(const geometry_msgs::msg::Pose& pose) {
-  return std::isfinite(pose.position.x) && std::isfinite(pose.position.y) && std::isfinite(pose.position.z) && std::isfinite(pose.orientation.x) &&
-         std::isfinite(pose.orientation.y) && std::isfinite(pose.orientation.z) && std::isfinite(pose.orientation.w);
+  return std::isfinite(pose.position.x) && std::isfinite(pose.position.y) && std::isfinite(pose.position.z) &&
+         std::isfinite(pose.orientation.x) && std::isfinite(pose.orientation.y) && std::isfinite(pose.orientation.z) &&
+         std::isfinite(pose.orientation.w);
 }
 
 // `base` offset by delta_z along world Z — every grasp/pre-grasp/place/
@@ -69,8 +70,8 @@ geometry_msgs::msg::Quaternion top_down_orientation(double yaw_rad) {
   return q;
 }
 
-geometry_msgs::msg::PoseStamped grasp_pose(const geometry_msgs::msg::PoseStamped& object_centre, double half_height_m, double grasp_offset_m,
-                                           double yaw_rad) {
+geometry_msgs::msg::PoseStamped grasp_pose(const geometry_msgs::msg::PoseStamped& object_centre, double half_height_m,
+                                           double grasp_offset_m, double yaw_rad) {
   geometry_msgs::msg::PoseStamped out = object_centre;
   out.pose.position.z = object_centre.pose.position.z + half_height_m + grasp_offset_m;
   out.pose.orientation = top_down_orientation(yaw_rad);
@@ -85,8 +86,8 @@ geometry_msgs::msg::PoseStamped retreat_pose(const geometry_msgs::msg::PoseStamp
   return offset_z(from, retreat_height_m);
 }
 
-geometry_msgs::msg::PoseStamped place_pose(const geometry_msgs::msg::PoseStamped& destination_centre, double half_height_m, double grasp_offset_m,
-                                           double yaw_rad) {
+geometry_msgs::msg::PoseStamped place_pose(const geometry_msgs::msg::PoseStamped& destination_centre, double half_height_m,
+                                           double grasp_offset_m, double yaw_rad) {
   // The gripper's own geometry doesn't change between pick and place.
   return grasp_pose(destination_centre, half_height_m, grasp_offset_m, yaw_rad);
 }

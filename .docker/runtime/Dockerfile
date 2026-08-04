@@ -28,6 +28,7 @@ COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringu
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
 COPY src/sorting_arm_interfaces/package.xml /tmp/sorting-arm-src/sorting_arm_interfaces/
 COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
+COPY src/sorting_arm_perception/package.xml /tmp/sorting-arm-src/sorting_arm_perception/
 COPY src/sorting_arm_skills/package.xml /tmp/sorting-arm-src/sorting_arm_skills/
 
 # Installing rosdep does not guarantee that its system source list exists.
@@ -117,6 +118,7 @@ COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringu
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
 COPY src/sorting_arm_interfaces/package.xml /tmp/sorting-arm-src/sorting_arm_interfaces/
 COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
+COPY src/sorting_arm_perception/package.xml /tmp/sorting-arm-src/sorting_arm_perception/
 COPY src/sorting_arm_skills/package.xml /tmp/sorting-arm-src/sorting_arm_skills/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -163,6 +165,7 @@ COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringu
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
 COPY src/sorting_arm_interfaces/package.xml /tmp/sorting-arm-src/sorting_arm_interfaces/
 COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
+COPY src/sorting_arm_perception/package.xml /tmp/sorting-arm-src/sorting_arm_perception/
 COPY src/sorting_arm_skills/package.xml /tmp/sorting-arm-src/sorting_arm_skills/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
