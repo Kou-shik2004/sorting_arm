@@ -1,9 +1,12 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <future>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -16,15 +19,45 @@
 #include "sorting_arm_interfaces/action/home.hpp"
 #include "sorting_arm_interfaces/action/pick.hpp"
 #include "sorting_arm_interfaces/action/place.hpp"
+#include "sorting_arm_interfaces/msg/detected_object.hpp"
 #include "sorting_arm_interfaces/srv/detect_objects.hpp"
 #include "sorting_arm_interfaces/srv/sync_objects.hpp"
 
 namespace sorting_arm_executive {
 
-class PlanAssignmentsNode : public BT::SyncActionNode {
+struct AdaptiveCycleState {
+  struct PendingJob {
+    SortJob job;
+    sorting_arm_interfaces::msg::DetectedObject object;
+  };
+
+  explicit AdaptiveCycleState(std::size_t initial_count) : remaining_count(initial_count) {}
+
+  std::size_t remaining_count = 0;
+  std::size_t scan_number = 1;
+  std::set<std::size_t> used_destination_slots;
+  std::vector<sorting_arm_interfaces::msg::DetectedObject> placed_objects;
+  std::optional<PendingJob> pending_job;
+};
+
+class RemainingCountNode : public BT::SyncActionNode {
  public:
-  PlanAssignmentsNode(const std::string& name, const BT::NodeConfig& config, AssignmentPlanner planner,
-                      std::shared_ptr<ExecutionReport> report);
+  RemainingCountNode(const std::string& name, const BT::NodeConfig& config, std::shared_ptr<AdaptiveCycleState> state,
+                     std::shared_ptr<ExecutionReport> report);
+
+  static BT::PortsList providedPorts();
+
+ private:
+  BT::NodeStatus tick() override;
+
+  std::shared_ptr<AdaptiveCycleState> state_;
+  std::shared_ptr<ExecutionReport> report_;
+};
+
+class PlanNextJobNode : public BT::SyncActionNode {
+ public:
+  PlanNextJobNode(const std::string& name, const BT::NodeConfig& config, AssignmentPlanner planner,
+                  std::shared_ptr<AdaptiveCycleState> state, std::shared_ptr<ExecutionReport> report);
 
   static BT::PortsList providedPorts();
 
@@ -32,6 +65,21 @@ class PlanAssignmentsNode : public BT::SyncActionNode {
   BT::NodeStatus tick() override;
 
   AssignmentPlanner planner_;
+  std::shared_ptr<AdaptiveCycleState> state_;
+  std::shared_ptr<ExecutionReport> report_;
+};
+
+class CommitPlacedJobNode : public BT::SyncActionNode {
+ public:
+  CommitPlacedJobNode(const std::string& name, const BT::NodeConfig& config, std::shared_ptr<AdaptiveCycleState> state,
+                      std::shared_ptr<ExecutionReport> report);
+
+  static BT::PortsList providedPorts();
+
+ private:
+  BT::NodeStatus tick() override;
+
+  std::shared_ptr<AdaptiveCycleState> state_;
   std::shared_ptr<ExecutionReport> report_;
 };
 
@@ -172,6 +220,6 @@ class PlaceNode : public BT::StatefulActionNode {
 };
 
 void register_policy_nodes(BT::BehaviorTreeFactory& factory, AssignmentPlanner planner,
-                           std::shared_ptr<ExecutionReport> report);
+                           std::shared_ptr<AdaptiveCycleState> state, std::shared_ptr<ExecutionReport> report);
 
 }  // namespace sorting_arm_executive

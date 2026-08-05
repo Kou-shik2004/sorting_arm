@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -98,7 +99,46 @@ TEST(AssignmentPlanner, RepeatedInputProducesIdenticalJobs) {
     EXPECT_EQ(first.jobs[index].object_id, second.jobs[index].object_id);
     EXPECT_EQ(first.jobs[index].label, second.jobs[index].label);
     EXPECT_EQ(first.jobs[index].destination, second.jobs[index].destination);
+    EXPECT_EQ(first.jobs[index].destination_slot_index, second.jobs[index].destination_slot_index);
   }
+}
+
+TEST(AssignmentPlanner, UsedDestinationSlotsAreNeverReused) {
+  const std::vector<sorting_arm_interfaces::msg::DetectedObject> objects{object("box_1", "red", 0.40, 0.12),
+                                                                         object("box_2", "blue", 0.52, 0.12)};
+  const std::set<std::size_t> used_destination_slots{0U, 2U};
+
+  const auto result = planner().plan(objects, used_destination_slots);
+
+  ASSERT_TRUE(result.ok) << result.message;
+  ASSERT_EQ(result.jobs.size(), 2U);
+  EXPECT_EQ(result.jobs[0].destination_slot_index, 1U);
+  EXPECT_EQ(result.jobs[1].destination_slot_index, 3U);
+  for (const auto& job : result.jobs) {
+    EXPECT_FALSE(used_destination_slots.contains(job.destination_slot_index));
+  }
+}
+
+TEST(AssignmentPlanner, RemainingSnapshotMustFitUnusedMatchingCapacity) {
+  const std::vector<sorting_arm_interfaces::msg::DetectedObject> objects{object("box_1", "blue", 0.40, -0.12),
+                                                                         object("box_2", "blue", 0.52, 0.12)};
+  const std::set<std::size_t> used_destination_slots{2U, 3U};
+
+  const auto result = planner().plan(objects, used_destination_slots);
+
+  EXPECT_FALSE(result.ok);
+  EXPECT_TRUE(result.jobs.empty());
+  EXPECT_NE(result.message.find("no unused destination"), std::string::npos);
+}
+
+TEST(AssignmentPlanner, OutOfRangeUsedDestinationSlotReturnsNoJobs) {
+  const std::set<std::size_t> used_destination_slots{99U};
+
+  const auto result = planner().plan(snapshot(), used_destination_slots);
+
+  EXPECT_FALSE(result.ok);
+  EXPECT_TRUE(result.jobs.empty());
+  EXPECT_NE(result.message.find("out of range"), std::string::npos);
 }
 
 }  // namespace

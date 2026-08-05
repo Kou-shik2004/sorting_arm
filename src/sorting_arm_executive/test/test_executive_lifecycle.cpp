@@ -53,11 +53,19 @@ class ApplicationEndpoints : public rclcpp::Node {
           }
         });
     detect_service_ = create_service<sorting_arm_interfaces::srv::DetectObjects>(
-        "detect_objects", [this](std::shared_ptr<sorting_arm_interfaces::srv::DetectObjects::Request>,
+        "detect_objects", [this](std::shared_ptr<sorting_arm_interfaces::srv::DetectObjects::Request> request,
                                  std::shared_ptr<sorting_arm_interfaces::srv::DetectObjects::Response> response) {
-          trace_.push_back("DetectObjects");
-          response->objects = {object("box_1", "blue", 0.40, -0.12), object("box_2", "red", 0.40, 0.12),
-                               object("box_3", "red", 0.52, -0.12), object("box_4", "blue", 0.52, 0.12)};
+          trace_.push_back("DetectObjects:" + std::to_string(request->expected_count));
+          const std::size_t observation_index = detect_requests_++;
+          const bool count_matches =
+              observation_index < observations_.size() && request->expected_count == observations_[observation_index].size();
+          if (!count_matches) {
+            response->result.ok = false;
+            response->result.phase = "detect";
+            response->result.message = "unexpected observation request";
+            return;
+          }
+          response->objects = observations_[observation_index];
           response->result.ok = true;
         });
     sync_service_ = create_service<sorting_arm_interfaces::srv::SyncObjects>(
@@ -120,6 +128,13 @@ class ApplicationEndpoints : public rclcpp::Node {
   }
 
   std::vector<std::string> trace_;
+  std::vector<std::vector<sorting_arm_interfaces::msg::DetectedObject>> observations_ = {
+      {object("box_1", "blue", 0.40, -0.12), object("box_2", "red", 0.40, 0.12), object("box_3", "red", 0.52, -0.12),
+       object("box_4", "blue", 0.52, 0.12)},
+      {object("box_1", "red", 0.30, 0.22), object("box_2", "red", 0.52, -0.12), object("box_3", "blue", 0.52, 0.12)},
+      {object("box_1", "red", 0.52, -0.12), object("box_2", "blue", 0.52, 0.12)},
+      {object("box_1", "blue", 0.52, 0.12)}};
+  std::size_t detect_requests_ = 0;
   rclcpp::Service<controller_manager_msgs::srv::ListControllers>::SharedPtr controller_service_;
   rclcpp::Service<sorting_arm_interfaces::srv::DetectObjects>::SharedPtr detect_service_;
   rclcpp::Service<sorting_arm_interfaces::srv::SyncObjects>::SharedPtr sync_service_;
@@ -144,7 +159,7 @@ rclcpp::NodeOptions executive_options() {
   options.parameter_overrides(
       {rclcpp::Parameter("readiness_timeout_s", 1.0), rclcpp::Parameter("detect_timeout_s", 1.0),
        rclcpp::Parameter("sync_timeout_s", 1.0), rclcpp::Parameter("action_timeout_s", 1.0),
-       rclcpp::Parameter("cancel_timeout_s", 0.2),
+       rclcpp::Parameter("cancel_timeout_s", 0.2), rclcpp::Parameter("cycle_object_count", 4),
        rclcpp::Parameter("destination_slots.labels", std::vector<std::string>{"red", "red", "blue", "blue"}),
        rclcpp::Parameter("destination_slots.centre_x", std::vector<double>{0.58, 0.58, 0.58, 0.58}),
        rclcpp::Parameter("destination_slots.centre_y", std::vector<double>{0.38, 0.32, -0.32, -0.38}),
@@ -152,7 +167,7 @@ rclcpp::NodeOptions executive_options() {
   return options;
 }
 
-TEST_F(ExecutiveLifecycleTest, RunsOneCompleteCycleThenRemainsIdle) {
+TEST_F(ExecutiveLifecycleTest, ReobservesOneObjectAtATimeThenRemainsIdle) {
   auto endpoints = std::make_shared<ApplicationEndpoints>();
   auto executive = std::make_shared<ExecutiveNode>(executive_options());
   rclcpp::executors::SingleThreadedExecutor executor;
@@ -167,8 +182,11 @@ TEST_F(ExecutiveLifecycleTest, RunsOneCompleteCycleThenRemainsIdle) {
   ASSERT_EQ(executive->cycle_state(), CycleState::succeeded);
   EXPECT_EQ(executive->report().completed_jobs, 4U);
   EXPECT_EQ(endpoints->trace(),
-            (std::vector<std::string>{"Home", "DetectObjects", "SyncObjects:4", "Pick:box_1", "Place:box_1", "Pick:box_2",
-                                      "Place:box_2", "Pick:box_3", "Place:box_3", "Pick:box_4", "Place:box_4", "Home"}));
+            (std::vector<std::string>{"Home", "DetectObjects:4", "SyncObjects:4", "Pick:scan_1_box_1", "Place:scan_1_box_1",
+                                      "Home", "DetectObjects:3", "SyncObjects:4", "Pick:scan_2_box_1", "Place:scan_2_box_1",
+                                      "Home", "DetectObjects:2", "SyncObjects:4", "Pick:scan_3_box_1", "Place:scan_3_box_1",
+                                      "Home", "DetectObjects:1", "SyncObjects:4", "Pick:scan_4_box_1", "Place:scan_4_box_1",
+                                      "Home"}));
 
   const auto terminal_trace = endpoints->trace();
   const auto idle_deadline = std::chrono::steady_clock::now() + 100ms;

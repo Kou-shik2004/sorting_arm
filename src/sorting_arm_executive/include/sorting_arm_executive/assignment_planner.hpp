@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -18,7 +19,8 @@ class AssignmentPlanner {
  public:
   explicit AssignmentPlanner(std::vector<DestinationSlot> slots);
 
-  AssignmentResult plan(const std::vector<sorting_arm_interfaces::msg::DetectedObject>& objects) const;
+  AssignmentResult plan(const std::vector<sorting_arm_interfaces::msg::DetectedObject>& objects,
+                        const std::set<std::size_t>& used_destination_slots = {}) const;
 
  private:
   std::vector<DestinationSlot> slots_;

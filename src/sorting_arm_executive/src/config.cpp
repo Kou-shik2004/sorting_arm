@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -41,6 +42,11 @@ geometry_msgs::msg::PoseStamped world_centre(double x, double y, double z) {
 
 ExecutiveConfig load_executive_config(rclcpp::Node& node) {
   ExecutiveConfig config;
+  const auto cycle_object_count = node.declare_parameter<std::int64_t>("cycle_object_count");
+  if (cycle_object_count <= 0) {
+    throw std::runtime_error("cycle_object_count must be positive");
+  }
+  config.cycle_object_count = static_cast<std::size_t>(cycle_object_count);
   config.readiness_timeout_s = node.declare_parameter<double>("readiness_timeout_s");
   config.detect_timeout_s = node.declare_parameter<double>("detect_timeout_s");
   config.sync_timeout_s = node.declare_parameter<double>("sync_timeout_s");
@@ -63,6 +69,9 @@ ExecutiveConfig load_executive_config(rclcpp::Node& node) {
                     {{"centre_x", x.size()}, {"centre_y", y.size()}, {"centre_z", z.size()}});
   for (std::size_t index = 0; index < labels.size(); ++index) {
     config.destination_slots.push_back(DestinationSlot{labels[index], world_centre(x[index], y[index], z[index])});
+  }
+  if (config.cycle_object_count > config.destination_slots.size()) {
+    throw std::runtime_error("cycle_object_count exceeds destination slot capacity");
   }
   return config;
 }

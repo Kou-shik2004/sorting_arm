@@ -76,6 +76,16 @@ bool inside_source_area(const Eigen::Vector3d& centre, const DetectorConfig& con
          centre.y() <= config.source_max.y() && centre.z() >= config.source_min.z() && centre.z() <= config.source_max.z();
 }
 
+bool inside_exclusion_area(const Eigen::Vector3d& centre, const DetectorConfig& config) {
+  for (const auto& area : config.exclusion_areas) {
+    if (centre.x() >= area.minimum.x() && centre.x() <= area.maximum.x() && centre.y() >= area.minimum.y() &&
+        centre.y() <= area.maximum.y()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool physical_size_matches(const std::array<Eigen::Vector3d, 4>& corners, const DetectorConfig& config, double& first_side,
                            double& second_side) {
   first_side = (corners[1] - corners[0]).norm();
@@ -136,7 +146,7 @@ void RgbdDetector::draw_detections(cv::Mat& rgb_image, const std::vector<Detecte
 DetectorResult RgbdDetector::detect(const cv::Mat& rgb_image, const cv::Mat& depth_image,
                                     const image_geometry::PinholeCameraModel& camera_model,
                                     const Eigen::Isometry3d& world_from_camera, bool rectify_pixels,
-                                    const DetectorConfig& config) const {
+                                    std::size_t expected_count, const DetectorConfig& config) const {
   DetectorResult result;
   result.debug_image = rgb_image.clone();
 
@@ -297,6 +307,12 @@ DetectorResult RgbdDetector::detect(const cv::Mat& rgb_image, const cv::Mat& dep
       annotate_candidate(result.debug_image, candidate.contour, reason, cv::Scalar(255, 255, 0));
       continue;
     }
+    if (inside_exclusion_area(world_centre, config)) {
+      const std::string reason = candidate.label + ": inside tray exclusion area";
+      rejections.push_back(reason);
+      annotate_candidate(result.debug_image, candidate.contour, reason, cv::Scalar(255, 255, 0));
+      continue;
+    }
 
     double first_side = 0.0;
     double second_side = 0.0;
@@ -312,13 +328,13 @@ DetectorResult RgbdDetector::detect(const cv::Mat& rgb_image, const cv::Mat& dep
                                         cv::Point2f(static_cast<float>(centroid_column), static_cast<float>(centroid_row))});
   }
 
-  if (result.cubes.size() != config.expected_object_count) {
+  if (result.cubes.size() != expected_count) {
     draw_detections(result.debug_image, result.cubes);
     const std::size_t accepted_count = result.cubes.size();
     result.cubes.clear();
     result.phase = "object_count";
-    result.message = "accepted " + std::to_string(accepted_count) + " of expected " +
-                     std::to_string(config.expected_object_count) + " cubes";
+    result.message =
+        "accepted " + std::to_string(accepted_count) + " of expected " + std::to_string(expected_count) + " cubes";
     if (!rejections.empty()) {
       result.message += "; first rejection: " + rejections.front();
     }

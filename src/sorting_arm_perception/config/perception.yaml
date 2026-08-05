@@ -2,12 +2,19 @@
   ros__parameters:
     use_sim_time: true
 
-    expected_object_count: 4
     cube_dimensions: [0.04, 0.04, 0.04]
 
     source_area:
-      minimum: [0.35, -0.17, 0.50]
-      maximum: [0.57, 0.17, 0.55]
+      minimum: [-0.18, -0.48, 0.50]
+      maximum: [0.88, 0.48, 0.55]
+
+    # Tray footprints from sorting_cell.sdf, expanded by the cube half-width.
+    # Placed cubes remain collision objects but are not future pickup candidates.
+    excluded_areas:
+      minimum_x: [0.4575, 0.4575]
+      minimum_y: [0.2275, -0.4725]
+      maximum_x: [0.7025, 0.7025]
+      maximum_y: [0.4725, -0.2275]
 
     colour:
       red_low_hue: [0, 10]

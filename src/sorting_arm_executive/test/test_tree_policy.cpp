@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -16,7 +17,9 @@ namespace {
 
 struct FakeContext {
   std::vector<std::string> trace;
-  std::vector<sorting_arm_interfaces::msg::DetectedObject> objects;
+  std::vector<std::vector<sorting_arm_interfaces::msg::DetectedObject>> observations;
+  std::vector<std::uint32_t> expected_counts;
+  std::vector<std::vector<sorting_arm_interfaces::msg::DetectedObject>> synced_objects;
   std::string failing_step;
 };
 
@@ -68,16 +71,26 @@ class FakeDetect : public BT::SyncActionNode {
       : BT::SyncActionNode(name, config), context_(std::move(context)) {}
 
   static BT::PortsList providedPorts() {
-    return {BT::OutputPort<std::vector<sorting_arm_interfaces::msg::DetectedObject>>("objects")};
+    return {BT::InputPort<std::uint32_t>("expected_count"),
+            BT::OutputPort<std::vector<sorting_arm_interfaces::msg::DetectedObject>>("objects")};
   }
 
  private:
   BT::NodeStatus tick() override {
-    context_->trace.push_back("DetectObjects");
+    std::uint32_t expected_count = 0;
+    if (!getInput("expected_count", expected_count)) {
+      return BT::NodeStatus::FAILURE;
+    }
+    context_->expected_counts.push_back(expected_count);
+    context_->trace.push_back("DetectObjects:" + std::to_string(expected_count));
     if (context_->failing_step == "DetectObjects") {
       return BT::NodeStatus::FAILURE;
     }
-    const auto output = setOutput("objects", context_->objects);
+    const std::size_t observation_index = context_->expected_counts.size() - 1U;
+    if (observation_index >= context_->observations.size()) {
+      return BT::NodeStatus::FAILURE;
+    }
+    const auto output = setOutput("objects", context_->observations[observation_index]);
     return output ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
   }
 
@@ -95,11 +108,12 @@ class FakeSync : public BT::SyncActionNode {
 
  private:
   BT::NodeStatus tick() override {
-    context_->trace.push_back("SyncObjects");
     std::vector<sorting_arm_interfaces::msg::DetectedObject> objects;
-    if (!getInput("objects", objects) || objects != context_->objects) {
+    if (!getInput("objects", objects)) {
       return BT::NodeStatus::FAILURE;
     }
+    context_->synced_objects.push_back(objects);
+    context_->trace.push_back("SyncObjects:" + std::to_string(objects.size()));
     return context_->failing_step == "SyncObjects" ? BT::NodeStatus::FAILURE : BT::NodeStatus::SUCCESS;
   }
 
@@ -151,13 +165,16 @@ class FakePlace : public BT::SyncActionNode {
 BT::Tree make_tree(const std::shared_ptr<FakeContext>& context) {
   BT::BehaviorTreeFactory factory;
   const auto report = std::make_shared<ExecutionReport>();
-  register_policy_nodes(factory, planner(), report);
+  const auto cycle_state = std::make_shared<AdaptiveCycleState>(4U);
+  register_policy_nodes(factory, planner(), cycle_state, report);
   factory.registerNodeType<FakeHome>("Home", context);
   factory.registerNodeType<FakeDetect>("DetectObjects", context);
   factory.registerNodeType<FakeSync>("SyncObjects", context);
   factory.registerNodeType<FakePick>("Pick", context);
   factory.registerNodeType<FakePlace>("Place", context);
-  return factory.createTreeFromFile(SORTING_TREE_PATH);
+  auto blackboard = BT::Blackboard::create();
+  blackboard->set("cycle_object_count", 4);
+  return factory.createTreeFromFile(SORTING_TREE_PATH, blackboard);
 }
 
 BT::NodeStatus run_tree(BT::Tree& tree) {
@@ -170,29 +187,44 @@ BT::NodeStatus run_tree(BT::Tree& tree) {
 
 std::shared_ptr<FakeContext> context() {
   auto result = std::make_shared<FakeContext>();
-  result->objects = {object("box_1", "blue", 0.40, -0.12), object("box_2", "red", 0.40, 0.12),
-                     object("box_3", "red", 0.52, -0.12), object("box_4", "blue", 0.52, 0.12)};
+  result->observations = {
+      {object("box_1", "blue", 0.40, -0.12), object("box_2", "red", 0.40, 0.12), object("box_3", "red", 0.52, -0.12),
+       object("box_4", "blue", 0.52, 0.12)},
+      {object("box_1", "red", 0.30, 0.22), object("box_2", "red", 0.52, -0.12), object("box_3", "blue", 0.52, 0.12)},
+      {object("box_1", "red", 0.52, -0.12), object("box_2", "blue", 0.52, 0.12)},
+      {object("box_1", "blue", 0.52, 0.12)}};
   return result;
 }
 
-TEST(TreePolicy, ExecutesCompleteOneCycleInOrder) {
+TEST(TreePolicy, ReobservesAfterEveryPlacedObject) {
   auto fake = context();
   auto tree = make_tree(fake);
 
   EXPECT_EQ(run_tree(tree), BT::NodeStatus::SUCCESS);
-  EXPECT_EQ(fake->trace, (std::vector<std::string>{"ObservationHome", "DetectObjects", "SyncObjects", "Pick:box_1",
-                                                   "Place:box_1", "Pick:box_2", "Place:box_2", "Pick:box_3", "Place:box_3",
-                                                   "Pick:box_4", "Place:box_4", "FinalHome"}));
+  EXPECT_EQ(fake->expected_counts, (std::vector<std::uint32_t>{4U, 3U, 2U, 1U}));
+  EXPECT_EQ(fake->trace,
+            (std::vector<std::string>{"ObservationHome",    "DetectObjects:4",    "SyncObjects:4",      "Pick:scan_1_box_1",
+                                      "Place:scan_1_box_1", "ReobserveHome",      "DetectObjects:3",    "SyncObjects:4",
+                                      "Pick:scan_2_box_1",  "Place:scan_2_box_1", "ReobserveHome",      "DetectObjects:2",
+                                      "SyncObjects:4",      "Pick:scan_3_box_1",  "Place:scan_3_box_1", "ReobserveHome",
+                                      "DetectObjects:1",    "SyncObjects:4",      "Pick:scan_4_box_1",  "Place:scan_4_box_1",
+                                      "ReobserveHome"}));
+  ASSERT_EQ(fake->synced_objects.size(), 4U);
+  EXPECT_EQ(fake->synced_objects[1][0].id, "scan_1_box_1");
+  EXPECT_DOUBLE_EQ(fake->synced_objects[1][0].centre.pose.position.x, 0.58);
+  EXPECT_EQ(fake->synced_objects[1][1].id, "scan_2_box_1");
+  EXPECT_DOUBLE_EQ(fake->synced_objects[1][1].centre.pose.position.x, 0.30);
 }
 
 TEST(TreePolicy, FirstChildFailureStopsEveryLaterOperation) {
   auto fake = context();
-  fake->failing_step = "Pick:box_2";
+  fake->failing_step = "Pick:scan_2_box_1";
   auto tree = make_tree(fake);
 
   EXPECT_EQ(run_tree(tree), BT::NodeStatus::FAILURE);
-  EXPECT_EQ(fake->trace, (std::vector<std::string>{"ObservationHome", "DetectObjects", "SyncObjects", "Pick:box_1",
-                                                   "Place:box_1", "Pick:box_2"}));
+  EXPECT_EQ(fake->trace, (std::vector<std::string>{"ObservationHome", "DetectObjects:4", "SyncObjects:4",
+                                                   "Pick:scan_1_box_1", "Place:scan_1_box_1", "ReobserveHome",
+                                                   "DetectObjects:3", "SyncObjects:4", "Pick:scan_2_box_1"}));
 }
 
 }  // namespace

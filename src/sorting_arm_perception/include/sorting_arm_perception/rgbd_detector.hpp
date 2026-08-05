@@ -16,11 +16,16 @@ struct HsvRange {
   int maximum_hue = 0;
 };
 
+struct ExclusionArea {
+  Eigen::Vector2d minimum = Eigen::Vector2d::Zero();
+  Eigen::Vector2d maximum = Eigen::Vector2d::Zero();
+};
+
 struct DetectorConfig {
-  std::size_t expected_object_count = 0;
   std::array<double, 3> cube_dimensions{};
   Eigen::Vector3d source_min = Eigen::Vector3d::Zero();
   Eigen::Vector3d source_max = Eigen::Vector3d::Zero();
+  std::vector<ExclusionArea> exclusion_areas;
   HsvRange red_low;
   HsvRange red_high;
   HsvRange blue;
@@ -54,7 +59,7 @@ class RgbdDetector {
  public:
   DetectorResult detect(const cv::Mat& rgb_image, const cv::Mat& depth_image,
                         const image_geometry::PinholeCameraModel& camera_model, const Eigen::Isometry3d& world_from_camera,
-                        bool rectify_pixels, const DetectorConfig& config) const;
+                        bool rectify_pixels, std::size_t expected_count, const DetectorConfig& config) const;
   void draw_detections(cv::Mat& rgb_image, const std::vector<DetectedCube>& cubes) const;
 };
 

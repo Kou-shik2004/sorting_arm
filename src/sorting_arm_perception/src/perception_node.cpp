@@ -84,12 +84,6 @@ PerceptionNode::PerceptionNode()
 }
 
 void PerceptionNode::load_parameters() {
-  const std::int64_t expected_count = declare_parameter<std::int64_t>("expected_object_count");
-  if (expected_count <= 0) {
-    throw std::runtime_error("expected_object_count must be positive");
-  }
-  detector_config_.expected_object_count = static_cast<std::size_t>(expected_count);
-
   const auto cube_dimensions = declare_parameter<std::vector<double>>("cube_dimensions");
   if (cube_dimensions.size() != 3 || !finite_values(cube_dimensions) ||
       std::any_of(cube_dimensions.begin(), cube_dimensions.end(), [](double value) { return value <= 0.0; })) {
@@ -106,6 +100,25 @@ void PerceptionNode::load_parameters() {
   detector_config_.source_max = Eigen::Vector3d(source_max[0], source_max[1], source_max[2]);
   if ((detector_config_.source_min.array() >= detector_config_.source_max.array()).any()) {
     throw std::runtime_error("source_area.minimum must be below source_area.maximum");
+  }
+
+  const auto exclusion_min_x = declare_parameter<std::vector<double>>("excluded_areas.minimum_x");
+  const auto exclusion_min_y = declare_parameter<std::vector<double>>("excluded_areas.minimum_y");
+  const auto exclusion_max_x = declare_parameter<std::vector<double>>("excluded_areas.maximum_x");
+  const auto exclusion_max_y = declare_parameter<std::vector<double>>("excluded_areas.maximum_y");
+  const std::size_t exclusion_count = exclusion_min_x.size();
+  if (exclusion_min_y.size() != exclusion_count || exclusion_max_x.size() != exclusion_count ||
+      exclusion_max_y.size() != exclusion_count) {
+    throw std::runtime_error("excluded_areas coordinate lists must have equal sizes");
+  }
+  for (std::size_t index = 0; index < exclusion_count; ++index) {
+    const ExclusionArea area{Eigen::Vector2d(exclusion_min_x[index], exclusion_min_y[index]),
+                             Eigen::Vector2d(exclusion_max_x[index], exclusion_max_y[index])};
+    if (!area.minimum.allFinite() || !area.maximum.allFinite() || area.minimum.x() >= area.maximum.x() ||
+        area.minimum.y() >= area.maximum.y()) {
+      throw std::runtime_error("excluded_areas entry must have finite increasing bounds");
+    }
+    detector_config_.exclusion_areas.push_back(area);
   }
 
   const auto load_hue_range = [this](const std::string& name) {
@@ -322,9 +335,12 @@ bool PerceptionNode::validate_projection_contract(const SynchronizedPair& pair,
 
 void PerceptionNode::detect(const std::shared_ptr<DetectObjects::Request> request,
                             std::shared_ptr<DetectObjects::Response> response) {
-  static_cast<void>(request);
   response->objects.clear();
   clear_display_overlay();
+  if (request->expected_count == 0U) {
+    fail(response, "object_count", "expected_count must be positive");
+    return;
+  }
   const rclcpp::Time request_time = now();
 
   SynchronizedPair pair;
@@ -404,8 +420,9 @@ void PerceptionNode::detect(const std::shared_ptr<DetectObjects::Request> reques
 
   DetectorResult detector_result;
   try {
-    detector_result = detector_.detect(rgb_bridge->image, depth_bridge->image, camera_model,
-                                       tf2::transformToEigen(transform), rectify_pixels, detector_config_);
+    detector_result =
+        detector_.detect(rgb_bridge->image, depth_bridge->image, camera_model, tf2::transformToEigen(transform),
+                         rectify_pixels, request->expected_count, detector_config_);
   } catch (const cv::Exception& exception) {
     const std::string message = std::string("OpenCV detector failure: ") + exception.what();
     publish_debug_failure(pair.rgb->header, rgb_bridge->image, "segmentation", message);

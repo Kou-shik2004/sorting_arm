@@ -2,6 +2,8 @@
   ros__parameters:
     use_sim_time: true
 
+    cycle_object_count: 4
+
     readiness_timeout_s: 120.0
     detect_timeout_s: 2.0
     sync_timeout_s: 10.0

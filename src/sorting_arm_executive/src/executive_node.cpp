@@ -37,6 +37,7 @@ sorting_arm_interfaces::msg::SkillResult startup_failure(const std::string& mess
 ExecutiveNode::ExecutiveNode(const rclcpp::NodeOptions& options) : Node("sorting_arm_executive", options) {
   config_ = load_executive_config(*this);
   planner_.emplace(config_.destination_slots);
+  report_->total_jobs = config_.cycle_object_count;
 
   home_client_ = rclcpp_action::create_client<sorting_arm_interfaces::action::Home>(this, "home");
   pick_client_ = rclcpp_action::create_client<sorting_arm_interfaces::action::Pick>(this, "pick");
@@ -45,7 +46,8 @@ ExecutiveNode::ExecutiveNode(const rclcpp::NodeOptions& options) : Node("sorting
   sync_client_ = create_client<sorting_arm_interfaces::srv::SyncObjects>("sync_objects");
   controller_client_ = create_client<controller_manager_msgs::srv::ListControllers>("/controller_manager/list_controllers");
 
-  register_policy_nodes(factory_, *planner_, report_);
+  const auto cycle_state = std::make_shared<AdaptiveCycleState>(config_.cycle_object_count);
+  register_policy_nodes(factory_, *planner_, cycle_state, report_);
   factory_.registerNodeType<DetectObjectsNode>("DetectObjects", detect_client_, config_.detect_timeout_s, report_);
   factory_.registerNodeType<SyncObjectsNode>("SyncObjects", sync_client_, config_.sync_timeout_s, report_);
   factory_.registerNodeType<HomeNode>("Home", home_client_, config_.action_timeout_s, config_.cancel_timeout_s, report_,
@@ -57,7 +59,9 @@ ExecutiveNode::ExecutiveNode(const rclcpp::NodeOptions& options) : Node("sorting
 
   const auto tree_path =
       ament_index_cpp::get_package_share_directory("sorting_arm_executive") + "/behavior_trees/sorting_cycle.xml";
-  tree_ = factory_.createTreeFromFile(tree_path);
+  auto blackboard = BT::Blackboard::create();
+  blackboard->set("cycle_object_count", static_cast<int>(config_.cycle_object_count));
+  tree_ = factory_.createTreeFromFile(tree_path, blackboard);
   readiness_deadline_ = deadline_after(config_.readiness_timeout_s);
   timer_ = create_wall_timer(20ms, [this] { tick(); });
   RCLCPP_INFO(get_logger(), "executive loaded; waiting for controllers and five application endpoints");

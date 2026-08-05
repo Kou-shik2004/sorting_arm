@@ -1,4 +1,6 @@
-# Empty request: capture one complete observation from the selected provider.
+# Capture one complete observation containing this many remaining pickup cubes.
+# Cubes inside configured tray exclusion areas are not pickup candidates.
+uint32 expected_count
 ---
 DetectedObject[] objects
 SkillResult result

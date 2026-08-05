@@ -1,7 +1,6 @@
 #include "sorting_arm_executive/assignment_planner.hpp"
 
 #include <cmath>
-#include <map>
 #include <set>
 #include <stdexcept>
 #include <utility>
@@ -48,14 +47,21 @@ AssignmentPlanner::AssignmentPlanner(std::vector<DestinationSlot> slots) : slots
   }
 }
 
-AssignmentResult AssignmentPlanner::plan(const std::vector<sorting_arm_interfaces::msg::DetectedObject>& objects) const {
+AssignmentResult AssignmentPlanner::plan(const std::vector<sorting_arm_interfaces::msg::DetectedObject>& objects,
+                                         const std::set<std::size_t>& used_destination_slots) const {
   if (objects.empty()) {
     return {false, "detected snapshot is empty", {}};
   }
 
   std::set<std::string> object_ids;
-  std::map<std::string, std::size_t> next_slot;
+  std::set<std::size_t> allocated_slots = used_destination_slots;
   std::vector<SortJob> jobs;
+
+  for (const std::size_t index : used_destination_slots) {
+    if (index >= slots_.size()) {
+      return {false, "used destination slot index is out of range", {}};
+    }
+  }
 
   for (const auto& object : objects) {
     if (object.id.empty() || !object_ids.insert(object.id).second) {
@@ -76,19 +82,19 @@ AssignmentResult AssignmentPlanner::plan(const std::vector<sorting_arm_interface
       }
     }
 
-    std::vector<const DestinationSlot*> matching_slots;
-    for (const auto& slot : slots_) {
-      if (slot.label == object.label) {
-        matching_slots.push_back(&slot);
+    std::size_t slot_index = slots_.size();
+    for (std::size_t index = 0; index < slots_.size(); ++index) {
+      if (slots_[index].label == object.label && !allocated_slots.contains(index)) {
+        slot_index = index;
+        break;
       }
     }
-    auto& index = next_slot[object.label];
-    if (index >= matching_slots.size()) {
+    if (slot_index == slots_.size()) {
       return {false, "no unused destination remains for label '" + object.label + "'", {}};
     }
 
-    jobs.push_back(SortJob{object.id, object.label, matching_slots[index]->centre});
-    ++index;
+    jobs.push_back(SortJob{object.id, object.label, slots_[slot_index].centre, slot_index});
+    allocated_slots.insert(slot_index);
   }
 
   return {true, {}, std::move(jobs)};

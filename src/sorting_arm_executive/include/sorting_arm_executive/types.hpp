@@ -17,6 +17,7 @@ struct SortJob {
   std::string object_id;
   std::string label;
   geometry_msgs::msg::PoseStamped destination;
+  std::size_t destination_slot_index = 0;
 };
 
 struct ExecutionReport {

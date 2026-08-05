@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <vector>
 
 #include "rclcpp/node.hpp"
@@ -10,6 +11,7 @@ namespace sorting_arm_executive {
 
 struct ExecutiveConfig {
   std::vector<DestinationSlot> destination_slots;
+  std::size_t cycle_object_count = 0;
   double readiness_timeout_s = 0.0;
   double detect_timeout_s = 0.0;
   double sync_timeout_s = 0.0;

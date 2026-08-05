@@ -2,16 +2,18 @@
   <BehaviorTree ID="SortingCycle">
     <Sequence name="one_sorting_cycle">
       <Home name="ObservationHome"/>
-      <DetectObjects objects="{objects}"/>
-      <PlanAssignments objects="{objects}" jobs="{jobs}"/>
-      <SyncObjects objects="{objects}"/>
-      <ForEachSortJob queue="{jobs}" value="{job}">
-        <Sequence name="sort_one_object">
+      <Repeat num_cycles="{cycle_object_count}">
+        <Sequence name="reobserve_and_sort_one_object">
+          <RemainingCount expected_count="{expected_count}"/>
+          <DetectObjects expected_count="{expected_count}" objects="{objects}"/>
+          <PlanNextJob objects="{objects}" job="{job}" scene_objects="{scene_objects}"/>
+          <SyncObjects objects="{scene_objects}"/>
           <Pick job="{job}"/>
           <Place job="{job}"/>
+          <CommitPlacedJob job="{job}"/>
+          <Home name="ReobserveHome"/>
         </Sequence>
-      </ForEachSortJob>
-      <Home name="FinalHome"/>
+      </Repeat>
     </Sequence>
   </BehaviorTree>
 </root>
