@@ -444,7 +444,9 @@ void PerceptionNode::detect(const std::shared_ptr<DetectObjects::Request> reques
     object.centre.pose.position.z = cube.centre.z();
     object.centre.pose.orientation.w = 1.0;
     object.primitive_type = shape_msgs::msg::SolidPrimitive::BOX;
-    object.dimensions.assign(detector_config_.cube_dimensions.begin(), detector_config_.cube_dimensions.end());
+    for (const double dimension : detector_config_.cube_dimensions) {
+      object.dimensions.push_back(dimension);
+    }
     response->objects.push_back(object);
   }
   response->result.ok = true;

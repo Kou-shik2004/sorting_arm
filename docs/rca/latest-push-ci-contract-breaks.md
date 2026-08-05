@@ -1,4 +1,4 @@
-# Latest push broke the clean dependency and lint contracts
+# Latest pushes broke clean CI contracts
 
 ## Overview
 
@@ -11,6 +11,11 @@ Local validation of the correction then found a second failure from the same pus
 `sorting_arm_skills` enabled the workspace's 125-column limit while its existing
 sources still contained 73 longer lines.
 
+Commit `172aadda` corrected those two failures, but GitHub Actions run
+[`30956769976`](https://github.com/Kou-shik2004/sorting_arm/actions/runs/30956769976)
+then exposed a third failure. The clean Release build rejected one safe range copy
+in `sorting_arm_perception` as `-Warray-bounds`.
+
 ## Impact
 
 The remote run stopped before compiling `sorting_arm_perception`. Colcon aborted
@@ -18,7 +23,9 @@ the remaining dependent work, so deterministic tests and runtime-image checks di
 not run.
 
 Without the dependency fix, CI could not build. Without the formatting fix, the
-next CI run would build and then fail `sorting_arm_skills` cpplint.
+next CI run would build and then fail `sorting_arm_skills` cpplint. After both
+corrections, run `30956769976` reached perception compilation but stopped before
+tests and runtime-image checks.
 
 ## Failure 1: perception manifest omitted from rosdep input
 
@@ -76,9 +83,35 @@ The workspace-root `clang-format` configuration was applied to the
 `sorting_arm_skills` C++ headers and sources. The 125-column check remains active.
 No motion behavior or API ownership changed.
 
+## Failure 3: Release range copy triggered `-Warray-bounds`
+
+GitHub Actions run `30956769976` built commit `172aadda` with GNU 13 Release
+optimization. It stopped at `PerceptionNode::detect()` with:
+
+```text
+error: ‘void* __builtin_memmove(...)’ pointer overflow [...] [-Werror=array-bounds=]
+```
+
+The warning came from the inlined `std::vector<double>::assign(first, last)` used
+to copy `DetectorConfig::cube_dimensions`. That source is a
+`std::array<double, 3>`, so the copy is bounded and preserves the required X, Y,
+Z order. GCC's Release range analysis could not prove that bound after inlining
+the generated service-message vector implementation.
+
+The first false contract was treating earlier non-Release local validation as
+evidence for CI's clean Release build. A clean local GNU 13.3 Release build
+reproduced the same warning before this correction.
+
+### Correction
+
+`PerceptionNode::detect()` now appends each configured array element through a
+range loop. The service still returns exactly the same three dimensions in the
+same order. `-Warray-bounds` and `-Werror` remain enabled; no warning is hidden.
+
 ## Verification evidence
 
-Local validation on 2026-08-05 produced these results:
+Earlier local validation on 2026-08-05, covering failures 1 and 2, produced these
+results:
 
 - `colcon build --symlink-install`: six packages finished;
 - `colcon test` and `colcon test-result --verbose`: 89 tests, zero errors, zero
@@ -92,6 +125,16 @@ Local validation on 2026-08-05 produced these results:
 The skipped tests are unchanged registered-linter skips. They are not runtime
 evidence.
 
-Docker is unavailable in the development container. A new GitHub Actions run is
-still required to prove the clean Buildx stages and later runtime-image checks in
-their exact environment.
+Current correction validation on 2026-08-05 produced these results:
+
+- clean temporary GNU 13.3 Release build: all six packages finished;
+- `colcon test` and `colcon test-result --verbose`: 89 tests, zero errors, zero
+  failures, and 26 skipped;
+- `rosdep check --from-paths src --ignore-src`: all system dependencies satisfied;
+- `clang-format --dry-run --Werror` on `perception_node.cpp`: no formatting errors;
+  and
+- `git diff --check`: no whitespace errors.
+
+The skipped tests are existing registered-linter skips. Docker is unavailable in
+the development container. A new GitHub Actions run remains required to prove
+Buildx and runtime-image stages in their exact environment.
