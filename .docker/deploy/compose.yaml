@@ -1,0 +1,14 @@
+# Run with: docker compose -f .docker/deploy/compose.yaml up --build
+# Then open http://localhost:6080 - see docs/container/deployment.md.
+
+services:
+  demo:
+    build:
+      context: ../..
+      dockerfile: .docker/deploy/Dockerfile
+    image: sorting_arm_deploy:jazzy
+    container_name: sorting_arm_deploy
+    init: true          # ros2 launch is not PID 1's usual friend with signals
+    shm_size: 1gb        # Gazebo + RViz share memory for the camera images
+    ports:
+      - "6080:6080"      # noVNC - works the same on macOS, Windows and Linux

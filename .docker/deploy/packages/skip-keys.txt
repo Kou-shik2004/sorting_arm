@@ -1,0 +1,4 @@
+# declared by sorting_arm_moveit but app.launch.xml never reaches either one
+
+joint_state_publisher_gui
+moveit_setup_assistant
