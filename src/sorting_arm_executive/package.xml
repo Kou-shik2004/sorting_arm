@@ -1,29 +1,23 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>sorting_arm_perception</name>
+  <name>sorting_arm_executive</name>
   <version>0.0.0</version>
-  <description>One-shot RGB-D cube discovery with a live camera viewer for the sorting cell.</description>
+  <description>One-cycle BehaviorTree executive for the sorting arm.</description>
   <maintainer email="koushik.s2022@vitstudent.ac.in">kratos</maintainer>
   <license>TODO: License declaration</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>builtin_interfaces</depend>
-  <depend>cv_bridge</depend>
-  <depend>eigen</depend>
+  <depend>ament_index_cpp</depend>
+  <depend>behaviortree_cpp</depend>
+  <depend>controller_manager_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>image_geometry</depend>
-  <depend>libopencv-dev</depend>
-  <depend>message_filters</depend>
   <depend>rclcpp</depend>
-  <depend>sensor_msgs</depend>
+  <depend>rclcpp_action</depend>
   <depend>shape_msgs</depend>
   <depend>sorting_arm_interfaces</depend>
-  <depend>std_msgs</depend>
-  <depend>tf2</depend>
-  <depend>tf2_eigen</depend>
-  <depend>tf2_ros</depend>
 
+  <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

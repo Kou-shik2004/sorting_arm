@@ -6,6 +6,6 @@
             value="$(find-pkg-share sorting_arm_bringup)/rviz/final_cam.rviz" />
     </include>
 
-    <include file="$(find-pkg-share sorting_arm_perception)/launch/perception.launch.xml" />
+    <include file="$(find-pkg-share sorting_arm_bringup)/launch/perception.launch.xml" />
 
 </launch>

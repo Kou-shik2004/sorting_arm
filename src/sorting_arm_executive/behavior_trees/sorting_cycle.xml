@@ -1,0 +1,17 @@
+<root BTCPP_format="4" main_tree_to_execute="SortingCycle">
+  <BehaviorTree ID="SortingCycle">
+    <Sequence name="one_sorting_cycle">
+      <Home name="ObservationHome"/>
+      <DetectObjects objects="{objects}"/>
+      <PlanAssignments objects="{objects}" jobs="{jobs}"/>
+      <SyncObjects objects="{objects}"/>
+      <ForEachSortJob queue="{jobs}" value="{job}">
+        <Sequence name="sort_one_object">
+          <Pick job="{job}"/>
+          <Place job="{job}"/>
+        </Sequence>
+      </ForEachSortJob>
+      <Home name="FinalHome"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

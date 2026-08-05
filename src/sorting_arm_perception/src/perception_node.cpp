@@ -15,7 +15,6 @@
 #include <rclcpp/time.hpp>
 #include <sensor_msgs/distortion_models.hpp>
 #include <sensor_msgs/image_encodings.hpp>
-#include <set>
 #include <shape_msgs/msg/solid_primitive.hpp>
 #include <stdexcept>
 #include <string>
@@ -25,16 +24,6 @@
 
 namespace sorting_arm_perception {
 namespace {
-
-constexpr char kRgbTopic[] = "/camera/image_raw";
-constexpr char kDepthTopic[] = "/camera/depth/image_raw";
-constexpr char kCameraInfoTopic[] = "/camera/camera_info";
-constexpr char kJointStatesTopic[] = "/joint_states";
-constexpr char kDebugTopic[] = "/perception/debug_image";
-constexpr char kDisplayTopic[] = "/perception/display_image";
-constexpr char kDetectService[] = "detect_objects";
-constexpr char kWorldFrame[] = "world";
-constexpr std::size_t kSynchronizerQueueSize = 5;
 
 bool finite_values(const std::vector<double>& values) {
   return std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); });
@@ -65,10 +54,10 @@ PerceptionNode::PerceptionNode()
   rclcpp::SubscriptionOptions input_options;
   input_options.callback_group = input_group_;
   const rclcpp::SensorDataQoS sensor_qos;
-  rgb_subscriber_.subscribe(this, kRgbTopic, sensor_qos.get_rmw_qos_profile(), input_options);
-  depth_subscriber_.subscribe(this, kDepthTopic, sensor_qos.get_rmw_qos_profile(), input_options);
+  rgb_subscriber_.subscribe(this, "/camera/image_raw", sensor_qos.get_rmw_qos_profile(), input_options);
+  depth_subscriber_.subscribe(this, "/camera/depth/image_raw", sensor_qos.get_rmw_qos_profile(), input_options);
 
-  ApproximateTimePolicy policy(kSynchronizerQueueSize);
+  ApproximateTimePolicy policy(5);
   policy.setMaxIntervalDuration(rclcpp::Duration::from_seconds(capture_config_.maximum_pairing_interval_seconds));
   // we cast policy const so Jazzy selects policy plus two inputs, not the
   // three-input overload that treats policy as a filter
@@ -78,17 +67,19 @@ PerceptionNode::PerceptionNode()
       std::bind(&PerceptionNode::synchronized_callback, this, std::placeholders::_1, std::placeholders::_2));
 
   camera_info_subscription_ = create_subscription<sensor_msgs::msg::CameraInfo>(
-      kCameraInfoTopic, sensor_qos, std::bind(&PerceptionNode::camera_info_callback, this, std::placeholders::_1),
+      "/camera/camera_info", sensor_qos, std::bind(&PerceptionNode::camera_info_callback, this, std::placeholders::_1),
       input_options);
-  joint_state_subscription_ = create_subscription<sensor_msgs::msg::JointState>(
-      kJointStatesTopic, sensor_qos, std::bind(&PerceptionNode::joint_state_callback, this, std::placeholders::_1),
-      input_options);
+  if (display_config_.show_viewer) {
+    joint_state_subscription_ = create_subscription<sensor_msgs::msg::JointState>(
+        "/joint_states", sensor_qos, std::bind(&PerceptionNode::joint_state_callback, this, std::placeholders::_1),
+        input_options);
+    viewer_ = std::make_unique<PerceptionViewer>();
+  }
 
   const rclcpp::QoS debug_qos = rclcpp::QoS(1).reliable().durability_volatile();
-  debug_publisher_ = create_publisher<sensor_msgs::msg::Image>(kDebugTopic, debug_qos);
-  display_publisher_ = create_publisher<sensor_msgs::msg::Image>(kDisplayTopic, sensor_qos);
+  debug_publisher_ = create_publisher<sensor_msgs::msg::Image>("/perception/debug_image", debug_qos);
   service_ = create_service<DetectObjects>(
-      kDetectService, std::bind(&PerceptionNode::detect, this, std::placeholders::_1, std::placeholders::_2),
+      "detect_objects", std::bind(&PerceptionNode::detect, this, std::placeholders::_1, std::placeholders::_2),
       rclcpp::ServicesQoS(), service_group_);
 }
 
@@ -175,13 +166,8 @@ void PerceptionNode::load_parameters() {
     throw std::runtime_error("synchronization and capture timeouts must be positive and finite");
   }
 
-  display_config_.arm_joint_names = declare_parameter<std::vector<std::string>>("display.arm_joint_names");
+  display_config_.show_viewer = declare_parameter<bool>("show_viewer", false);
   display_config_.motion_threshold_radians = declare_parameter<double>("display.motion_threshold_radians");
-  const std::set<std::string> unique_joint_names(display_config_.arm_joint_names.begin(),
-                                                 display_config_.arm_joint_names.end());
-  if (display_config_.arm_joint_names.empty() || unique_joint_names.size() != display_config_.arm_joint_names.size()) {
-    throw std::runtime_error("display.arm_joint_names must contain unique arm joint names");
-  }
   if (!std::isfinite(display_config_.motion_threshold_radians) || display_config_.motion_threshold_radians <= 0.0) {
     throw std::runtime_error("display.motion_threshold_radians must be positive and finite");
   }
@@ -198,7 +184,7 @@ void PerceptionNode::synchronized_callback(sensor_msgs::msg::Image::ConstSharedP
     ++synchronized_pair_.sequence;
   }
   input_condition_.notify_all();
-  publish_display(rgb);
+  update_viewer(rgb);
 }
 
 void PerceptionNode::camera_info_callback(sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info) {
@@ -217,7 +203,7 @@ void PerceptionNode::camera_info_callback(sensor_msgs::msg::CameraInfo::ConstSha
 
 void PerceptionNode::joint_state_callback(sensor_msgs::msg::JointState::ConstSharedPtr joint_state) {
   std::vector<double> arm_positions;
-  for (const std::string& joint_name : display_config_.arm_joint_names) {
+  for (const std::string& joint_name : arm_joint_names_) {
     const auto name = std::find(joint_state->name.begin(), joint_state->name.end(), joint_name);
     if (name == joint_state->name.end()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "joint state is missing display arm joint '%s'",
@@ -406,7 +392,7 @@ void PerceptionNode::detect(const std::shared_ptr<DetectObjects::Request> reques
 
   geometry_msgs::msg::TransformStamped transform;
   try {
-    transform = tf_buffer_.lookupTransform(kWorldFrame, pair.rgb->header.frame_id,
+    transform = tf_buffer_.lookupTransform("world", pair.rgb->header.frame_id,
                                            rclcpp::Time(pair.capture_stamp, get_clock()->get_clock_type()),
                                            rclcpp::Duration::from_seconds(capture_config_.transform_timeout_seconds));
   } catch (const tf2::TransformException& exception) {
@@ -438,7 +424,7 @@ void PerceptionNode::detect(const std::shared_ptr<DetectObjects::Request> reques
     object.id = cube.id;
     object.label = cube.label;
     object.centre.header.stamp = pair.capture_stamp;
-    object.centre.header.frame_id = kWorldFrame;
+    object.centre.header.frame_id = "world";
     object.centre.pose.position.x = cube.centre.x();
     object.centre.pose.position.y = cube.centre.y();
     object.centre.pose.position.z = cube.centre.z();
@@ -472,12 +458,20 @@ void PerceptionNode::publish_debug_failure(const std_msgs::msg::Header& header, 
   publish_debug(header, debug_image);
 }
 
-void PerceptionNode::publish_display(const sensor_msgs::msg::Image::ConstSharedPtr& rgb) {
-  if (display_publisher_->get_subscription_count() == 0) {
+void PerceptionNode::update_viewer(const sensor_msgs::msg::Image::ConstSharedPtr& rgb) {
+  if (viewer_ == nullptr || !viewer_->active()) {
     return;
   }
   if (rgb->encoding != sensor_msgs::image_encodings::RGB8) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "display requires rgb8 input, got '%s'", rgb->encoding.c_str());
+    return;
+  }
+
+  cv_bridge::CvImageConstPtr rgb_image;
+  try {
+    rgb_image = cv_bridge::toCvShare(rgb, sensor_msgs::image_encodings::RGB8);
+  } catch (const cv_bridge::Exception& exception) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "viewer image conversion failed: %s", exception.what());
     return;
   }
 
@@ -487,16 +481,20 @@ void PerceptionNode::publish_display(const sensor_msgs::msg::Image::ConstSharedP
     overlay = display_overlay_;
   }
   if (overlay.empty()) {
-    display_publisher_->publish(*rgb);
+    try {
+      viewer_->show_rgb(rgb_image->image);
+    } catch (const cv::Exception& exception) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "viewer conversion failed: %s", exception.what());
+    }
     return;
   }
 
   try {
-    const cv_bridge::CvImagePtr display = cv_bridge::toCvCopy(rgb, sensor_msgs::image_encodings::RGB8);
-    detector_.draw_detections(display->image, overlay);
-    display_publisher_->publish(*display->toImageMsg());
-  } catch (const cv_bridge::Exception& exception) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "display conversion failed: %s", exception.what());
+    cv::Mat display_image = rgb_image->image.clone();
+    detector_.draw_detections(display_image, overlay);
+    viewer_->show_rgb(display_image);
+  } catch (const cv::Exception& exception) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "viewer annotation failed: %s", exception.what());
   }
 }
 
@@ -507,6 +505,9 @@ void PerceptionNode::clear_display_overlay() {
 }
 
 void PerceptionNode::activate_display_overlay(const std::vector<DetectedCube>& cubes) {
+  if (viewer_ == nullptr || !viewer_->active()) {
+    return;
+  }
   std::lock_guard<std::mutex> lock(display_mutex_);
   if (!complete_joint_state_received_) {
     RCLCPP_WARN(get_logger(), "detection succeeded, but boxes cannot persist without a complete arm joint state");

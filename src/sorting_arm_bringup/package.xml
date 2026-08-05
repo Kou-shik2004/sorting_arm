@@ -13,6 +13,7 @@
   <exec_depend>sorting_arm_moveit</exec_depend>
   <exec_depend>sorting_arm_perception</exec_depend>
   <exec_depend>sorting_arm_skills</exec_depend>
+  <exec_depend>sorting_arm_executive</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
 
   <!-- nodes moveit.launch.xml starts by hand -->

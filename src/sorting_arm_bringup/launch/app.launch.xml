@@ -2,6 +2,9 @@
 
     <arg name="skills_config"
          default="$(find-pkg-share sorting_arm_skills)/config/skills.yaml"/>
+    <arg name="executive_config"
+         default="$(find-pkg-share sorting_arm_executive)/config/sorting.yaml"/>
+    <arg name="use_camera_provider" default="true"/>
     <arg name="show_viewer" default="true"/>
 
     <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim_gui.launch.xml"/>
@@ -12,8 +15,18 @@
         <param from="$(var skills_config)"/>
     </node>
 
-    <include file="$(find-pkg-share sorting_arm_perception)/launch/perception.launch.xml">
-        <arg name="show_viewer" value="$(var show_viewer)"/>
-    </include>
+    <group if="$(var use_camera_provider)">
+        <include file="$(find-pkg-share sorting_arm_bringup)/launch/perception.launch.xml"/>
+    </group>
+
+    <group unless="$(var use_camera_provider)">
+        <node pkg="sorting_arm_executive" exec="fixed_object_provider" output="screen">
+            <param from="$(var executive_config)"/>
+        </node>
+    </group>
+
+    <node pkg="sorting_arm_executive" exec="executive_node" output="screen">
+        <param from="$(var executive_config)"/>
+    </node>
 
 </launch>

@@ -1,6 +1,7 @@
 #ifndef SORTING_ARM_PERCEPTION__PERCEPTION_NODE_HPP_
 #define SORTING_ARM_PERCEPTION__PERCEPTION_NODE_HPP_
 
+#include <array>
 #include <builtin_interfaces/msg/time.hpp>
 #include <chrono>
 #include <condition_variable>
@@ -21,6 +22,7 @@
 #include <tf2_ros/transform_listener.hpp>
 #include <vector>
 
+#include "sorting_arm_perception/perception_viewer.hpp"
 #include "sorting_arm_perception/rgbd_detector.hpp"
 
 namespace sorting_arm_perception {
@@ -51,7 +53,7 @@ class PerceptionNode : public rclcpp::Node {
   };
 
   struct DisplayConfig {
-    std::vector<std::string> arm_joint_names;
+    bool show_viewer = false;
     double motion_threshold_radians = 0.0;
   };
 
@@ -68,7 +70,7 @@ class PerceptionNode : public rclcpp::Node {
   void publish_debug(const std_msgs::msg::Header& header, const cv::Mat& image) const;
   void publish_debug_failure(const std_msgs::msg::Header& header, const cv::Mat& rgb_image, const std::string& phase,
                              const std::string& message) const;
-  void publish_display(const sensor_msgs::msg::Image::ConstSharedPtr& rgb);
+  void update_viewer(const sensor_msgs::msg::Image::ConstSharedPtr& rgb);
   void clear_display_overlay();
   void activate_display_overlay(const std::vector<DetectedCube>& cubes);
   static void fail(const std::shared_ptr<DetectObjects::Response>& response, const std::string& phase,
@@ -90,7 +92,6 @@ class PerceptionNode : public rclcpp::Node {
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_subscription_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_subscription_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_publisher_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr display_publisher_;
   rclcpp::Service<DetectObjects>::SharedPtr service_;
 
   std::mutex input_mutex_;
@@ -99,10 +100,15 @@ class PerceptionNode : public rclcpp::Node {
   sensor_msgs::msg::CameraInfo::ConstSharedPtr latest_camera_info_;
 
   std::mutex display_mutex_;
+  const std::array<std::string, 6> arm_joint_names_{"shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
+                                                    "wrist_1_joint",      "wrist_2_joint",       "wrist_3_joint"};
   std::vector<double> latest_arm_joint_positions_;
   std::vector<double> overlay_arm_joint_positions_;
   std::vector<DetectedCube> display_overlay_;
   bool complete_joint_state_received_ = false;
+
+  // viewer owns a worker that must stop before the node's display state dies
+  std::unique_ptr<PerceptionViewer> viewer_;
 };
 
 }  // namespace sorting_arm_perception

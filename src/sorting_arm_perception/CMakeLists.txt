@@ -37,6 +37,7 @@ find_package(tf2_ros REQUIRED)
 add_executable(camera_object_provider
   src/perception_main.cpp
   src/perception_node.cpp
+  src/perception_viewer.cpp
   src/rgbd_detector.cpp
 )
 target_include_directories(camera_object_provider PRIVATE
@@ -60,14 +61,6 @@ ament_target_dependencies(camera_object_provider
 )
 target_link_libraries(camera_object_provider Eigen3::Eigen ${OpenCV_LIBS})
 
-add_executable(perception_viewer src/perception_viewer.cpp)
-ament_target_dependencies(perception_viewer
-  cv_bridge
-  rclcpp
-  sensor_msgs
-)
-target_link_libraries(perception_viewer ${OpenCV_LIBS})
-
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(AMENT_LINT_AUTO_EXCLUDE
@@ -78,7 +71,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
-install(TARGETS camera_object_provider perception_viewer DESTINATION lib/${PROJECT_NAME})
+install(TARGETS camera_object_provider DESTINATION lib/${PROJECT_NAME})
 ament_package()

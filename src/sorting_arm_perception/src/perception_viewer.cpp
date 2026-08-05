@@ -1,84 +1,85 @@
+#include "sorting_arm_perception/perception_viewer.hpp"
+
 #include <chrono>
-#include <cv_bridge/cv_bridge.hpp>
 #include <exception>
-#include <memory>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/image_encodings.hpp>
-#include <sensor_msgs/msg/image.hpp>
-
-namespace {
+#include <rclcpp/logging.hpp>
+#include <utility>
 
 using namespace std::chrono_literals;
 
-constexpr char kDisplayTopic[] = "/perception/display_image";
-constexpr char kWindowName[] = "object_detector";
+namespace sorting_arm_perception {
 
-class PerceptionViewer : public rclcpp::Node {
- public:
-  PerceptionViewer() : Node("perception_viewer") {
-    cv::namedWindow(kWindowName, cv::WINDOW_NORMAL);
-    image_subscription_ = create_subscription<sensor_msgs::msg::Image>(
-        kDisplayTopic, rclcpp::SensorDataQoS(),
-        [this](const sensor_msgs::msg::Image::ConstSharedPtr image) { image_callback(image); });
-    render_timer_ = create_wall_timer(33ms, [this] { render(); });
+PerceptionViewer::PerceptionViewer() : worker_([this](std::stop_token stop_token) { run(stop_token); }) {}
+
+bool PerceptionViewer::active() const { return active_.load(); }
+
+void PerceptionViewer::show_rgb(const cv::Mat& rgb_image) {
+  if (!active()) {
+    return;
   }
 
-  ~PerceptionViewer() override { cv::destroyWindow(kWindowName); }
-
- private:
-  void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr& image) {
-    try {
-      const cv_bridge::CvImageConstPtr rgb = cv_bridge::toCvShare(image, sensor_msgs::image_encodings::RGB8);
-      cv::cvtColor(rgb->image, latest_bgr_image_, cv::COLOR_RGB2BGR);
-      if (latest_bgr_image_.size() != window_image_size_) {
-        window_image_size_ = latest_bgr_image_.size();
-        resize_window_ = true;
-      }
-    } catch (const cv_bridge::Exception& exception) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "viewer image conversion failed: %s", exception.what());
+  cv::Mat bgr_image;
+  cv::cvtColor(rgb_image, bgr_image, cv::COLOR_RGB2BGR);
+  {
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    if (!active()) {
+      return;
     }
+    latest_bgr_image_ = std::move(bgr_image);
+    ++frame_sequence_;
   }
-
-  void render() {
-    if (resize_window_) {
-      cv::resizeWindow(kWindowName, window_image_size_.width, window_image_size_.height);
-      resize_window_ = false;
-    }
-    if (!latest_bgr_image_.empty()) {
-      cv::imshow(kWindowName, latest_bgr_image_);
-    }
-    const int key = cv::waitKey(1);
-    if (key == 27 || cv::getWindowProperty(kWindowName, cv::WND_PROP_VISIBLE) < 1.0) {
-      rclcpp::shutdown();
-    }
-  }
-
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
-  rclcpp::TimerBase::SharedPtr render_timer_;
-  cv::Mat latest_bgr_image_;
-  cv::Size window_image_size_;
-  bool resize_window_ = false;
-};
-
-}  // namespace
-
-int main(int argc, char* argv[]) {
-  rclcpp::init(argc, argv);
-
-  try {
-    rclcpp::spin(std::make_shared<PerceptionViewer>());
-  } catch (const cv::Exception& exception) {
-    RCLCPP_FATAL(rclcpp::get_logger("perception_viewer"), "OpenCV viewer failed: %s", exception.what());
-    rclcpp::shutdown();
-    return 1;
-  } catch (const std::exception& exception) {
-    RCLCPP_FATAL(rclcpp::get_logger("perception_viewer"), "viewer failed: %s", exception.what());
-    rclcpp::shutdown();
-    return 1;
-  }
-
-  rclcpp::shutdown();
-  return 0;
+  frame_condition_.notify_one();
 }
+
+void PerceptionViewer::run(std::stop_token stop_token) noexcept {
+  try {
+    cv::namedWindow("object_detector", cv::WINDOW_NORMAL);
+    cv::Mat displayed_image;
+    cv::Size displayed_size;
+    std::uint64_t displayed_sequence = 0;
+
+    while (!stop_token.stop_requested()) {
+      {
+        std::unique_lock<std::mutex> lock(frame_mutex_);
+        frame_condition_.wait_for(lock, 33ms, [this, displayed_sequence] { return frame_sequence_ != displayed_sequence; });
+        if (frame_sequence_ != displayed_sequence) {
+          displayed_image = latest_bgr_image_;
+          displayed_sequence = frame_sequence_;
+        }
+      }
+
+      if (!displayed_image.empty()) {
+        if (displayed_image.size() != displayed_size) {
+          displayed_size = displayed_image.size();
+          cv::resizeWindow("object_detector", displayed_size.width, displayed_size.height);
+        }
+        cv::imshow("object_detector", displayed_image);
+      }
+
+      const int key = cv::waitKey(1);
+      if (key == 27 || cv::getWindowProperty("object_detector", cv::WND_PROP_VISIBLE) < 1.0) {
+        RCLCPP_INFO(rclcpp::get_logger("camera_object_provider"),
+                    "viewer closed; detection remains active and the window returns after restart");
+        break;
+      }
+    }
+
+    cv::destroyWindow("object_detector");
+  } catch (const cv::Exception& exception) {
+    RCLCPP_ERROR(rclcpp::get_logger("camera_object_provider"), "OpenCV viewer stopped: %s", exception.what());
+  } catch (const std::exception& exception) {
+    RCLCPP_ERROR(rclcpp::get_logger("camera_object_provider"), "viewer stopped: %s", exception.what());
+  } catch (...) {
+    RCLCPP_ERROR(rclcpp::get_logger("camera_object_provider"), "viewer stopped after an unknown exception");
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    active_.store(false);
+    latest_bgr_image_.release();
+  }
+}
+
+}  // namespace sorting_arm_perception
