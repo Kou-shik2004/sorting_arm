@@ -29,6 +29,11 @@ tests and runtime-image checks.
 
 ## Failure 1: perception manifest omitted from rosdep input
 
+This exact failure shape recurred five packages later with
+`sorting_arm_executive`. See
+[`ci-executive-manifest-omitted.md`](ci-executive-manifest-omitted.md), which also
+adds the drift check this fix should have included the first time.
+
 The decisive GitHub Actions error was:
 
 ```text

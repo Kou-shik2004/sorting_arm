@@ -26,6 +26,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
+COPY src/sorting_arm_executive/package.xml /tmp/sorting-arm-src/sorting_arm_executive/
 COPY src/sorting_arm_interfaces/package.xml /tmp/sorting-arm-src/sorting_arm_interfaces/
 COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
 COPY src/sorting_arm_perception/package.xml /tmp/sorting-arm-src/sorting_arm_perception/
@@ -56,6 +57,11 @@ FROM build-deps AS workspace-builder
 WORKDIR /sorting_arm_ws
 
 COPY src/ src/
+
+# every package under src/ needs a manifest COPY above, or rosdep never sees it — bit us twice, see docs/rca/
+RUN find src -mindepth 2 -maxdepth 2 -name package.xml -printf '%h\n' | xargs -n1 basename | sort > /tmp/src-packages.txt \
+ && find /tmp/sorting-arm-src -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort > /tmp/manifest-packages.txt \
+ && diff /tmp/src-packages.txt /tmp/manifest-packages.txt
 
 RUN source /opt/ros/jazzy/setup.bash \
  && colcon --log-base log build \
@@ -116,6 +122,7 @@ FROM runtime-base AS runtime-dependency-resolver
 
 COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
+COPY src/sorting_arm_executive/package.xml /tmp/sorting-arm-src/sorting_arm_executive/
 COPY src/sorting_arm_interfaces/package.xml /tmp/sorting-arm-src/sorting_arm_interfaces/
 COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
 COPY src/sorting_arm_perception/package.xml /tmp/sorting-arm-src/sorting_arm_perception/
@@ -163,6 +170,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
+COPY src/sorting_arm_executive/package.xml /tmp/sorting-arm-src/sorting_arm_executive/
 COPY src/sorting_arm_interfaces/package.xml /tmp/sorting-arm-src/sorting_arm_interfaces/
 COPY src/sorting_arm_moveit/package.xml /tmp/sorting-arm-src/sorting_arm_moveit/
 COPY src/sorting_arm_perception/package.xml /tmp/sorting-arm-src/sorting_arm_perception/
