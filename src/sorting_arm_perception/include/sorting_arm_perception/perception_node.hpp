@@ -55,6 +55,7 @@ class PerceptionNode : public rclcpp::Node {
   struct DisplayConfig {
     bool show_viewer = false;
     double motion_threshold_radians = 0.0;
+    double viewer_scale = 1.0;
   };
 
   void load_parameters();

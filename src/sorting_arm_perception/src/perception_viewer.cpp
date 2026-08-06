@@ -11,7 +11,8 @@ using namespace std::chrono_literals;
 
 namespace sorting_arm_perception {
 
-PerceptionViewer::PerceptionViewer() : worker_([this](std::stop_token stop_token) { run(stop_token); }) {}
+PerceptionViewer::PerceptionViewer(double window_scale)
+    : window_scale_(window_scale), worker_([this](std::stop_token stop_token) { run(stop_token); }) {}
 
 bool PerceptionViewer::active() const { return active_.load(); }
 
@@ -53,7 +54,8 @@ void PerceptionViewer::run(std::stop_token stop_token) noexcept {
       if (!displayed_image.empty()) {
         if (displayed_image.size() != displayed_size) {
           displayed_size = displayed_image.size();
-          cv::resizeWindow("object_detector", displayed_size.width, displayed_size.height);
+          cv::resizeWindow("object_detector", static_cast<int>(displayed_size.width * window_scale_),
+                            static_cast<int>(displayed_size.height * window_scale_));
         }
         cv::imshow("object_detector", displayed_image);
       }

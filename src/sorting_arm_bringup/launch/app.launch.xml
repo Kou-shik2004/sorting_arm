@@ -7,7 +7,9 @@
     <arg name="use_camera_provider" default="true"/>
     <arg name="show_viewer" default="true"/>
 
-    <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim_gui.launch.xml"/>
+    <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim.launch.xml">
+        <arg name="gui" value="true"/>
+    </include>
 
     <set_parameter name="use_sim_time" value="true"/>
 

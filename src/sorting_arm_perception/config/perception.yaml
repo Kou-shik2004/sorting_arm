@@ -42,3 +42,4 @@
 
     display:
       motion_threshold_radians: 0.001
+      viewer_scale: 1.0

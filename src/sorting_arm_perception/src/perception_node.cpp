@@ -73,7 +73,7 @@ PerceptionNode::PerceptionNode()
     joint_state_subscription_ = create_subscription<sensor_msgs::msg::JointState>(
         "/joint_states", sensor_qos, std::bind(&PerceptionNode::joint_state_callback, this, std::placeholders::_1),
         input_options);
-    viewer_ = std::make_unique<PerceptionViewer>();
+    viewer_ = std::make_unique<PerceptionViewer>(display_config_.viewer_scale);
   }
 
   const rclcpp::QoS debug_qos = rclcpp::QoS(1).reliable().durability_volatile();
@@ -183,6 +183,11 @@ void PerceptionNode::load_parameters() {
   display_config_.motion_threshold_radians = declare_parameter<double>("display.motion_threshold_radians");
   if (!std::isfinite(display_config_.motion_threshold_radians) || display_config_.motion_threshold_radians <= 0.0) {
     throw std::runtime_error("display.motion_threshold_radians must be positive and finite");
+  }
+
+  display_config_.viewer_scale = declare_parameter<double>("display.viewer_scale", 1.0);
+  if (!std::isfinite(display_config_.viewer_scale) || display_config_.viewer_scale <= 0.0) {
+    throw std::runtime_error("display.viewer_scale must be positive and finite");
   }
 }
 

@@ -1,0 +1,16 @@
+<launch>
+
+    <arg name="skills_config"
+         default="$(find-pkg-share sorting_arm_skills)/config/skills.yaml"/>
+
+    <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim.launch.xml">
+        <arg name="gui" value="true"/>
+    </include>
+
+    <set_parameter name="use_sim_time" value="true"/>
+
+    <node pkg="sorting_arm_skills" exec="skill_server_node" output="screen">
+        <param from="$(var skills_config)"/>
+    </node>
+
+</launch>

@@ -1,6 +1,6 @@
 <launch>
     <let name ="urdf_path" value="$(find-pkg-share sorting_arm_description)/urdf/sorting_arm.urdf.xacro"/>
-    <let name ="rviz_path" value="$(find-pkg-share sorting_arm_description)/rviz/sorting_arm.rviz"/>
+    <let name ="rviz_path" value="$(find-pkg-share sorting_arm_bringup)/rviz/sorting_arm.rviz"/>
 
     <!-- 1. Robot State Publisher -->
     <node pkg ="robot_state_publisher" exec ="robot_state_publisher">
