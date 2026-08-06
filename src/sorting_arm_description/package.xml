@@ -3,17 +3,15 @@
   <name>sorting_arm_description</name>
   <version>0.0.0</version>
   <description>UR5e and Robotiq 2F-85 description assets for the sorting cell.</description>
-  <maintainer email="koushik.s2022@vitstudent.ac.in">kratos</maintainer>
-  <license>TODO: License declaration</license>
+  <maintainer email="koushik20040804@gmail.com">Koushik</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <exec_depend>xacro</exec_depend>
   <exec_depend>urdf</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
-  <exec_depend>joint_state_publisher</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
-  <exec_depend>rviz2</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
 
   <!-- sorting_arm.ros2_control.xacro names mock_components/GenericSystem, and hardware_interface is what registers it -->

@@ -3,8 +3,8 @@
   <name>sorting_arm_interfaces</name>
   <version>0.0.0</version>
   <description>Shared runtime messages, services, and actions for the sorting arm.</description>
-  <maintainer email="koushik.s2022@vitstudent.ac.in">kratos</maintainer>
-  <license>TODO: License declaration</license>
+  <maintainer email="koushik20040804@gmail.com">Koushik</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>

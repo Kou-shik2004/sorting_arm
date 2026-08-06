@@ -3,8 +3,8 @@
   <name>sorting_arm_executive</name>
   <version>0.0.0</version>
   <description>One-cycle BehaviorTree executive for the sorting arm.</description>
-  <maintainer email="koushik.s2022@vitstudent.ac.in">kratos</maintainer>
-  <license>TODO: License declaration</license>
+  <maintainer email="koushik20040804@gmail.com">Koushik</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
