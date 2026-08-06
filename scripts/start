@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# Brings the container up, detached, idle. Builds first if the image doesn't
+# exist yet. Nothing launches - use ./scripts/enter or ./scripts/demo next.
+#
+# Flags: --dev (adds VS Code Server + bash history volumes)
+#        --gpu / --no-gpu (default: auto-detect the NVIDIA runtime)
+
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+cd "$REPO_ROOT"
+
+parse_common_flags "$@"
+require_docker
+allow_x11
+compose_args
+
+$DOCKER_CMD compose "${COMPOSE_ARGS[@]}" up -d --build
+
+echo
+echo "container is up. ./scripts/enter for a shell, ./scripts/demo to run the sort demo."

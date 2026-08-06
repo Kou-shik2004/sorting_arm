@@ -1,14 +1,16 @@
 {
-  "name": "sorting_arm_dev",
+  "name": "sorting_arm",
   "dockerComposeFile": "../docker-compose.yaml",
   "service": "dev",
   "workspaceFolder": "/sorting_arm_ws",
-  "remoteUser": "kratos",
+  "remoteUser": "rosdev",
   "updateRemoteUserUID": false,
   // Closing the window leaves the container running
   "shutdownAction": "none",
   "customizations": {
     "vscode": {
+      // A starting set - C++, Python, this repo's XML launch files and YAML
+      // configs, URDF, CMake, ament build tasks. Add your own on top.
       "extensions": [
         "ms-vscode.cpptools",
         "ms-python.python",
@@ -16,12 +18,10 @@
         "redhat.vscode-yaml",
         "Ranch-Hand-Robotics.urdf-editor",
         "smilerobotics.urdf",
-        "Ranch-Hand-Robotics.rde-pack",
         "Ranch-Hand-Robotics.rde-ros-2",
         "twxs.cmake",
         "ms-vscode.cmake-tools",
-        "althack.ament-task-provider",
-        "george-alisson.html-preview-vscode"
+        "althack.ament-task-provider"
       ],
       "settings": {
         "C_Cpp.intelliSenseEngine": "default",

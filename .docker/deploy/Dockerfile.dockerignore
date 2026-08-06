@@ -1,9 +1,0 @@
-# Allowlist - the build context holds only what the Dockerfile COPYs.
-
-*
-!.docker/deploy/entrypoint.sh
-!.docker/deploy/packages/gui.txt
-!.docker/deploy/packages/skip-keys.txt
-!.docker/runtime/resolve-dependencies.sh
-!src/
-!src/**

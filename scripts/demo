@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+# Starts the container if it's down, builds the workspace if it hasn't been
+# built yet, then runs the full demo (app.launch.xml). Ctrl-C stops the
+# demo; the container keeps running.
+#
+# Flags: --dev / --gpu / --no-gpu - see ./scripts/start
+
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+cd "$REPO_ROOT"
+
+parse_common_flags "$@"
+require_docker
+allow_x11
+compose_args
+ensure_up
+
+if ! workspace_built; then
+    echo "workspace hasn't been built yet - building it first (only happens once)"
+    $DOCKER_CMD exec "$CONTAINER_NAME" /entrypoint.sh colcon build --symlink-install
+fi
+
+echo "launching the full demo - app.launch.xml"
+exec $DOCKER_CMD exec -it "$CONTAINER_NAME" /entrypoint.sh ros2 launch sorting_arm_bringup app.launch.xml

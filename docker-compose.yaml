@@ -4,47 +4,29 @@ services:
       context: .
       dockerfile: .docker/Dockerfile
       args:
-        USERNAME: kratos
+        USERNAME: rosdev
         USER_UID: 1000
         USER_GID: 1000
-        TOOLS_REFRESH: ${TOOLS_REFRESH:-0}
-    image: sorting_arm_dev:jazzy
-    container_name: sorting_arm_dev
+    image: sorting_arm:jazzy
+    container_name: sorting_arm
     command: sleep infinity          # stays alive; exec or attach at will
     network_mode: host               # DDS discovery. Note: container ports are
     ipc: host                        # host ports. Qt/Gazebo shared memory.
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1           # Qt crashes on MIT-SHM across the IPC boundary
-      - TZ=Asia/Kolkata              # image clock is UTC, so timestamps dont match the host
-      - NVIDIA_DRIVER_CAPABILITIES=all
-      - CLAUDE_CONFIG_DIR=/home/kratos/.claude
     volumes:
       - .:/sorting_arm_ws:rw
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw            # GUI forwarding 
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw            # GUI forwarding
 
-      # Named volumes 
-      - sorting_arm_claude_config:/home/kratos/.claude        # config + plugins
-      - sorting_arm_claude_mem:/home/kratos/.claude-mem       # claude-mem db 
-      - sorting_arm_codex_config:/home/kratos/.codex          # codex
-      - sorting_arm_bash_history:/commandhistory              # HISTFILE
-      - sorting_arm_vscode_server:/home/kratos/.vscode-server # vscode server
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-volumes:
-  sorting_arm_claude_config:
-    name: sorting_arm_claude_config
-  sorting_arm_claude_mem:
-    name: sorting_arm_claude_mem
-  sorting_arm_codex_config:
-    name: sorting_arm_codex_config
-  sorting_arm_bash_history:
-    name: sorting_arm_bash_history
-  sorting_arm_vscode_server:
-    name: sorting_arm_vscode_server
+    # No named volumes here on purpose - enter, build, source, launch is the
+    # whole base offering. Want an NVIDIA GPU? scripts/start adds
+    # .docker/compose.gpu.yaml automatically when it finds the runtime.
+    # Want VS Code Server or bash history to survive a container rebuild?
+    # scripts/start --dev adds .docker/compose.dev.yaml.
+    #
+    # Want your own persistent tool state (an editor's server, a shell
+    # history, whatever)? Add it yourself, either as a bind mount:
+    #   - ~/.some-tool:/home/rosdev/.some-tool:rw
+    # or as a named volume, declared under `volumes:` at the bottom of this
+    # file the same way compose.dev.yaml does it.

@@ -1,0 +1,9 @@
+# Allowlist - the build context holds only what the Dockerfile COPYs.
+
+
+*
+!.docker/entrypoint.sh
+!.docker/packages/base.txt
+!.docker/packages/ros.txt
+!.docker/packages/extra.txt
+!.docker/underlay.repos

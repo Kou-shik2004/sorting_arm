@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+# Drops into a shell in the running container, starting it first if it's
+# down. Workspace is already sourced - see .docker/entrypoint.sh.
+#
+# Flags: --dev / --gpu / --no-gpu - see ./scripts/start
+
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+cd "$REPO_ROOT"
+
+parse_common_flags "$@"
+require_docker
+allow_x11
+compose_args
+ensure_up
+
+if ! workspace_built; then
+    echo "first time in - the workspace hasn't been built yet. Run cbuild, or exit and use ./scripts/demo."
+fi
+
+exec $DOCKER_CMD exec -it "$CONTAINER_NAME" /entrypoint.sh bash

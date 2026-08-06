@@ -1,0 +1,16 @@
+# NVIDIA GPU, opt-in. Reserving a device you dont have is a hard failure, not
+# a degradation - scripts/start only adds this file when it finds the
+# NVIDIA container runtime. Add manually with:
+#   docker compose -f docker-compose.yaml -f .docker/compose.gpu.yaml up -d
+
+services:
+  dev:
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

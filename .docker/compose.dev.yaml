@@ -1,0 +1,16 @@
+# VS Code Server and bash history, opt-in. Neither is in the base image -
+# VS Code downloads its own server on connect, and without a volume history
+# just lives inside the container and dies with it. Add with:
+#   docker compose -f docker-compose.yaml -f .docker/compose.dev.yaml up -d
+
+services:
+  dev:
+    volumes:
+      - sorting_arm_bash_history:/commandhistory              # HISTFILE
+      - sorting_arm_vscode_server:/home/rosdev/.vscode-server  # vscode server
+
+volumes:
+  sorting_arm_bash_history:
+    name: sorting_arm_bash_history
+  sorting_arm_vscode_server:
+    name: sorting_arm_vscode_server

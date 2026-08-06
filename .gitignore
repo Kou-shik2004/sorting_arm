@@ -2,16 +2,19 @@ build/
 install/
 log/
 
-# Only reusable failure analysis is published from docs.
+# Everything under docs/ is study material except the short public set.
 /docs/*
 !/docs/rca/
 !/docs/rca/**
+!/docs/architecture.md
+!/docs/container.md
 
 # Local AI configuration and formatting policy.
 .claude/
-.clang-format
 .*ignore
 !.gitignore
+!.dockerignore
+!.clang-format
 
 ai/
 .vscode/browse.vc.db*
@@ -21,3 +24,6 @@ AGENTS.md
 *.json
 .agents/
 .playwright-cli/
+
+# Koushik's personal container setup, kept but never shipped.
+.private/
