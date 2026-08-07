@@ -5,6 +5,12 @@ toolchain, and nothing else. `docker-compose.yaml` at the repo root runs it with
 repo bind-mounted at `/sorting_arm_ws` and the host's X11 socket forwarded, so RViz
 and Gazebo windows show up on your desktop.
 
+The image is built from `osrf/ros:jazzy-desktop-full`, with the workspace's own
+toolchain layered on from `.docker/packages/{base,ros,extra}.txt`, plus
+BehaviorTree.ROS2, which isn't packaged for apt and gets built from source into
+`/opt/underlay` from `.docker/underlay.repos`. The workspace itself is not baked into
+the image; it's bind-mounted from the host and built with `cbuild` once you're inside.
+
 The base compose file ships no named volumes. Enter the container, build, source,
 launch, that's the whole offering. Two optional fragments add more:
 
@@ -31,6 +37,34 @@ prints the install link if it's missing, no silent installs, no sudo you didn't 
 for. `enter` and `demo` reuse `.docker/entrypoint.sh` to source the workspace, so a
 one-off `docker exec` command gets ROS on its `PATH` the same way an interactive
 shell does.
+
+## What gets sourced, and when
+
+`.docker/entrypoint.sh` sources three things in order, each only if it's there:
+`/opt/ros/jazzy/setup.bash`, then `/opt/underlay/install/setup.bash`, then
+`/sorting_arm_ws/install/setup.bash` if the workspace has been built. Every command
+that runs through the entrypoint, an interactive shell from `enter` or a one-shot
+`docker exec` from `demo`, gets the same environment as a result.
+
+## The three shell functions
+
+`.docker/bashrc.sh` defines the functions you'll use inside the container:
+
+```bash
+cbuild      # colcon build --symlink-install
+ctest_all   # colcon test, then colcon test-result --verbose
+cdeps       # rosdep install --from-paths src --ignore-src -r -y
+```
+
+You only need a full image rebuild when `.docker/packages/*.txt`, `underlay.repos`, or
+the Dockerfile itself changes. Changes to workspace source under `src/` just need
+`cbuild`.
+
+## A second, smaller image for CI
+
+`.docker/runtime/` builds a separate, smaller image that `.github/workflows/ci.yml`
+uses to check the workspace headlessly. It isn't what you develop in; the compose
+files at the repo root and the four scripts above are for that.
 
 ## Adding your own persistent state
 

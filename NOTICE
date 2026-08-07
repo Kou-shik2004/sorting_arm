@@ -1,0 +1,88 @@
+This project is licensed under the MIT license (see LICENSE). Some files under
+`src/sorting_arm_description` were copied from other projects and remain under those
+projects' own licenses, listed below.
+
+## Universal Robots UR5e description
+
+Copied from `ur_description`, part of ROS-Industrial's
+`Universal_Robots_ROS2_Description` project, licensed under BSD-3-Clause.
+
+- `src/sorting_arm_description/urdf/ur5e/ur_macro.xacro`
+- `src/sorting_arm_description/urdf/ur5e/inc/ur_common.xacro`
+- `src/sorting_arm_description/urdf/ur5e/inc/ur_transmissions.xacro`
+- `src/sorting_arm_description/meshes/ur5e/visual/*.dae` (base, shoulder, upperarm,
+  forearm, wrist1, wrist2, wrist3)
+- `src/sorting_arm_description/meshes/ur5e/collision/*.stl` (same seven links)
+
+`ur_macro.xacro` still carries its upstream header, crediting Ludovic Delval as the
+author of the migration to YAML-based configuration, with contributions from Denis
+Stogl, Lovro Ivanov, Felix Messmer, Kelsey Hawkins, Wim Meeussen, Shaun Edwards, Nadia
+Hammoudeh Garcia, Dave Hershberger, G. vd. Hoorn, Philip Long, Dave Coleman, Miguel
+Prada, Mathias Luedtke, Marcel Schnirring, Felix von Drigalski, Felix Exner, Jimmy Da
+Silva, Ajit Krisshna N L, and Muhammad Asif Rana. Mesh file paths were changed to
+resolve against `sorting_arm_description` instead of `ur_description`; the mesh
+geometry itself is unmodified.
+
+Joint limits in `src/sorting_arm_description/config/joint_limits.yaml` are sourced from
+the Universal Robots e-Series User Manual for the UR5e, version 5.8, and from
+`https://github.com/ros-industrial/universal_robot/issues/265`.
+
+## Robotiq 2F-85 description
+
+Copied from `robotiq_description`, licensed under BSD-3-Clause.
+
+- `src/sorting_arm_description/urdf/robotiq_2f_85/robotiq_2f_85_macro.urdf.xacro`
+- `src/sorting_arm_description/urdf/robotiq_2f_85/ur_to_robotiq_adapter.urdf.xacro`
+- `src/sorting_arm_description/meshes/robotiq_2f_85/visual/2f_85/*.dae` (robotiq_base,
+  left/right_knuckle, left/right_inner_knuckle, left/right_finger,
+  left/right_finger_tip, ur_to_robotiq_adapter)
+- `src/sorting_arm_description/meshes/robotiq_2f_85/collision/2f_85/*.stl` (same ten
+  parts)
+
+Mesh file paths were changed to resolve against `sorting_arm_description`, the same as
+the UR5e meshes above. The xacro files carry no upstream author header to preserve.
+
+## BSD-3-Clause license text
+
+The text below applies to the UR5e and Robotiq 2F-85 files listed above.
+
+```
+Redistribution and use in source and binary forms, with or without modification, are
+permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of
+   conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list
+   of conditions and the following disclaimer in the documentation and/or other
+   materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be
+   used to endorse or promote products derived from this software without specific
+   prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## Build-time dependencies
+
+These are installed by the container, not vendored into this repository, and keep
+their own licenses: ROS 2 Jazzy, MoveIt 2, `ros2_control`, Gazebo Harmonic, `ros_gz`,
+OpenCV, and BehaviorTree.CPP with BehaviorTree.ROS2 (built from
+`.docker/underlay.repos` into `/opt/underlay`).
+
+## Why `sorting_arm_description/package.xml` says MIT
+
+That manifest, and everything in the package outside the paths listed above (the
+launch wiring, the sorting-cell-specific xacro layers, and the configuration), is
+MIT-licensed original work. The vendored UR5e and Robotiq 2F-85 files remain
+BSD-3-Clause regardless of what the manifest declares; this file is the license
+record for them.
