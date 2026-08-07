@@ -1,4 +1,4 @@
-# sorting_arm
+# Sorting-arm
 
 **A simulated UR5e cell that finds cubes by colour with a wrist camera and sorts them into trays.**
 
@@ -7,10 +7,11 @@
 ![MoveIt](https://img.shields.io/badge/MoveIt-2-blueviolet)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-<video src="https://raw.githubusercontent.com/Kou-shik2004/sorting_arm/main/docs/videos/output.mp4" controls muted playsinline width="720">
-Your browser doesn't render inline video. Watch it directly:
-<a href="docs/videos/output.mp4">docs/videos/output.mp4</a>
-</video>
+
+
+https://github.com/user-attachments/assets/712d5a2e-bca9-482f-95df-b3a75069dd2b
+
+
 
 > [!NOTE]
 > **Status:** the sorting cycle above is complete and runs end to end - this isn't a
