@@ -24,6 +24,9 @@
       minimum_value: 80
 
     detector:
+      # the two areas below are tuned for exactly this stream size, nothing rescales them yet.
+      tuned_image_width: 1280
+      tuned_image_height: 960
       minimum_contour_area: 400.0
       minimum_top_face_area: 480
       minimum_valid_depth_fraction: 0.70
@@ -34,7 +37,9 @@
     synchronization:
       maximum_interval: 0.010
 
-    capture_timeout: 0.5
+    # real-time watchdog on a new synchronized frame, not a sim-seconds budget -
+    # widened so it survives Gazebo dipping below RTF 1
+    capture_timeout: 3.0
     transform_timeout: 0.2
 
     registration:

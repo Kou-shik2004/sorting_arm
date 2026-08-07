@@ -1,27 +1,40 @@
 # RCA
 
-Short write-ups of real failures and how they were fixed. Not design notes, not
-tutorials, just the record of what went wrong.
+Root cause analyses for this project's genuinely persistent failures: the ones that
+took real investigation, produced wrong theories along the way, or came back more
+than once. Most bugs get fixed and forgotten; these three didn't, and the reasoning
+behind each fix is worth keeping.
+
+This is not the place for a failure that was found and fixed in one pass. If a
+problem didn't take real investigation, it doesn't earn a document here.
 
 ## Format
 
-Each entry answers three questions, in this order:
+Every entry follows the same structure:
 
-1. **Issue faced.** What broke, with the exact error or symptom.
-2. **What we did.** How the cause was found.
-3. **How we solved it.** The fix, and what it changes.
+```markdown
+# RCA: <Issue Name>
+## Problem
+## Expected Behavior
+## Root Cause
+## Fix
+## Verification
+## Prevention
+## Lessons Learned
+## References
+```
 
-Keep it short. A file that turns into a full investigative log has outgrown this
-format, and that's fine, some failures need one, but say so instead of forcing a
-long story into a three-line shape.
+**Problem** and **Expected Behavior** separate what actually happened from what
+should have happened. **Root Cause** explains the underlying reason, not just the
+symptom. **Fix** is exactly what changed. **Verification** is how the fix was
+confirmed, with real evidence, not "should work." **Prevention** is what stops the
+same class of bug from happening again. **Lessons Learned** is the reusable insight,
+the kind of thing worth remembering even outside this specific bug.
 
 ## Entries
 
 | File | Issue |
 |---|---|
-| [ci-executive-manifest-omitted.md](ci-executive-manifest-omitted.md) | CI's clean build never installed `sorting_arm_executive`'s dependencies |
-| [latest-push-ci-contract-breaks.md](latest-push-ci-contract-breaks.md) | Three separate CI breaks from one push: a missing manifest, an unformatted package, a Release-only compiler warning |
-| [runtime-stage-missing-rosdep.md](runtime-stage-missing-rosdep.md) | The headless runtime image took four failed CI runs to build, each one exposing a hidden assumption about the base image |
-| [gripper-command-vs-moveit-planning.md](gripper-command-vs-moveit-planning.md) | Gripper motion was planned through MoveIt instead of driven directly, which is the wrong abstraction for a one-joint gripper |
-| [gripper-controller-configuration.md](gripper-controller-configuration.md) | The generated gripper controller used a trajectory-controller schema while MoveIt expected a `GripperCommand` action |
 | [gripper-grasp-instability.md](gripper-grasp-instability.md) | The simulated gripper closed unreliably for most of a multi-session investigation into the physics engine and controller interaction |
+| [ci-package-manifest-omission.md](ci-package-manifest-omission.md) | CI's clean build kept missing a new package's dependencies, twice, because nothing checked the hand-written manifest list against `src/` |
+| [headless-ci-hidden-assumptions.md](headless-ci-hidden-assumptions.md) | Building the headless CI image took four failed runs, each one correcting a different wrong assumption about what carries over between Docker build stages |

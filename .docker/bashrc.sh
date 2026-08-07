@@ -26,21 +26,6 @@ source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash
 # Track colcon's home with repo to avoid wiping off
 export COLCON_HOME=/sorting_arm_ws/.docker/colcon
 
-# Install what the package.xml files ask for, off the mounted src.
-cdeps() {
-    ( cd /sorting_arm_ws && rosdep install --from-paths src --ignore-src -r -y "$@" )
-}
-
-# Build the workspace from anywhere.
-cbuild() {
-    ( cd /sorting_arm_ws && colcon build --symlink-install "$@" )
-}
-
-# Run tests and show the failures, not just the counts.
-ctest_all() {
-    ( cd /sorting_arm_ws && colcon test "$@" && colcon test-result --verbose )
-}
-
 # history
 
 if [ -d /commandhistory ]; then

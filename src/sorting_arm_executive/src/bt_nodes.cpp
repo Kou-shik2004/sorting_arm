@@ -12,10 +12,10 @@ namespace {
 
 using namespace std::chrono_literals;
 
-std::chrono::steady_clock::time_point deadline_after(double seconds) {
-  const auto duration =
-      std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds));
-  return std::chrono::steady_clock::now() + duration;
+// action/service progress is measured in sim time, so timeout deadlines have to be too -
+// a steady_clock deadline shrinks under a slow-RTF sim and fires for no real reason.
+rclcpp::Time deadline_after(const rclcpp::Clock::SharedPtr& clock, double seconds) {
+  return clock->now() + rclcpp::Duration::from_seconds(seconds);
 }
 
 sorting_arm_interfaces::msg::SkillResult failure_result(std::string phase, std::string message) {
@@ -156,8 +156,12 @@ BT::NodeStatus CommitPlacedJobNode::tick() {
 
 DetectObjectsNode::DetectObjectsNode(const std::string& name, const BT::NodeConfig& config,
                                      rclcpp::Client<Service>::SharedPtr client, double timeout_s,
-                                     std::shared_ptr<ExecutionReport> report)
-    : BT::StatefulActionNode(name, config), client_(std::move(client)), timeout_s_(timeout_s), report_(std::move(report)) {}
+                                     std::shared_ptr<ExecutionReport> report, rclcpp::Clock::SharedPtr clock)
+    : BT::StatefulActionNode(name, config),
+      client_(std::move(client)),
+      timeout_s_(timeout_s),
+      report_(std::move(report)),
+      clock_(std::move(clock)) {}
 
 BT::PortsList DetectObjectsNode::providedPorts() {
   return {BT::InputPort<std::uint32_t>("expected_count"),
@@ -178,7 +182,7 @@ BT::NodeStatus DetectObjectsNode::onStart() {
   request->expected_count = expected_count;
   try {
     pending_.emplace(client_->async_send_request(request));
-    deadline_ = deadline_after(timeout_s_);
+    deadline_ = deadline_after(clock_, timeout_s_);
     return BT::NodeStatus::RUNNING;
   } catch (const std::exception& error) {
     record_failure(report_, failure_result("detect", "DetectObjects request failed: " + std::string(error.what())));
@@ -205,7 +209,7 @@ BT::NodeStatus DetectObjectsNode::onRunning() {
     }
     return BT::NodeStatus::SUCCESS;
   }
-  if (std::chrono::steady_clock::now() >= deadline_) {
+  if (clock_->now() >= deadline_) {
     client_->remove_pending_request(*pending_);
     pending_.reset();
     record_failure(report_, failure_result("detect", "DetectObjects response timed out"));
@@ -223,8 +227,12 @@ void DetectObjectsNode::onHalted() {
 
 SyncObjectsNode::SyncObjectsNode(const std::string& name, const BT::NodeConfig& config,
                                  rclcpp::Client<Service>::SharedPtr client, double timeout_s,
-                                 std::shared_ptr<ExecutionReport> report)
-    : BT::StatefulActionNode(name, config), client_(std::move(client)), timeout_s_(timeout_s), report_(std::move(report)) {}
+                                 std::shared_ptr<ExecutionReport> report, rclcpp::Clock::SharedPtr clock)
+    : BT::StatefulActionNode(name, config),
+      client_(std::move(client)),
+      timeout_s_(timeout_s),
+      report_(std::move(report)),
+      clock_(std::move(clock)) {}
 
 BT::PortsList SyncObjectsNode::providedPorts() {
   return {BT::InputPort<std::vector<sorting_arm_interfaces::msg::DetectedObject>>("objects")};
@@ -242,7 +250,7 @@ BT::NodeStatus SyncObjectsNode::onStart() {
   request->objects = std::move(objects);
   try {
     pending_.emplace(client_->async_send_request(request));
-    deadline_ = deadline_after(timeout_s_);
+    deadline_ = deadline_after(clock_, timeout_s_);
     return BT::NodeStatus::RUNNING;
   } catch (const std::exception& error) {
     record_failure(report_, failure_result("scene_apply", "SyncObjects request failed: " + std::string(error.what())));
@@ -264,7 +272,7 @@ BT::NodeStatus SyncObjectsNode::onRunning() {
     }
     return BT::NodeStatus::SUCCESS;
   }
-  if (std::chrono::steady_clock::now() >= deadline_) {
+  if (clock_->now() >= deadline_) {
     client_->remove_pending_request(*pending_);
     pending_.reset();
     record_failure(report_, failure_result("scene_apply", "SyncObjects response timed out"));
@@ -282,13 +290,14 @@ void SyncObjectsNode::onHalted() {
 
 HomeNode::HomeNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
                    double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-                   rclcpp::Logger logger)
+                   rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
     : BT::StatefulActionNode(name, config),
       client_(std::move(client)),
       action_timeout_s_(action_timeout_s),
       cancel_timeout_s_(cancel_timeout_s),
       report_(std::move(report)),
-      logger_(std::move(logger)) {}
+      logger_(std::move(logger)),
+      clock_(std::move(clock)) {}
 
 BT::PortsList HomeNode::providedPorts() { return {}; }
 
@@ -305,7 +314,7 @@ BT::NodeStatus HomeNode::onStart() {
   };
   try {
     goal_future_ = client_->async_send_goal(Action::Goal{}, options);
-    deadline_ = deadline_after(action_timeout_s_);
+    deadline_ = deadline_after(clock_, action_timeout_s_);
     return BT::NodeStatus::RUNNING;
   } catch (const std::exception& error) {
     record_failure(report_, failure_result("home", "Home goal failed: " + std::string(error.what())));
@@ -327,7 +336,7 @@ BT::NodeStatus HomeNode::onRunning() {
       result_future_.wait_for(0s) == std::future_status::ready) {
     return finish(result_future_.get());
   }
-  if (std::chrono::steady_clock::now() >= deadline_) {
+  if (clock_->now() >= deadline_) {
     if (stage_ == Stage::waiting_goal) {
       record_failure(report_, failure_result("home", "Home goal response timed out"));
       return BT::NodeStatus::FAILURE;
@@ -349,7 +358,7 @@ void HomeNode::request_cancel(const std::string& reason) {
     try {
       client_->async_cancel_goal(goal_handle_);
       stage_ = Stage::canceling;
-      deadline_ = deadline_after(cancel_timeout_s_);
+      deadline_ = deadline_after(clock_, cancel_timeout_s_);
     } catch (const std::exception& error) {
       record_failure(report_, failure_result("home", reason + "; cancellation failed: " + error.what()));
     }
@@ -360,13 +369,14 @@ BT::NodeStatus HomeNode::finish(const GoalHandle::WrappedResult& wrapped) { retu
 
 PickNode::PickNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
                    double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-                   rclcpp::Logger logger)
+                   rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
     : BT::StatefulActionNode(name, config),
       client_(std::move(client)),
       action_timeout_s_(action_timeout_s),
       cancel_timeout_s_(cancel_timeout_s),
       report_(std::move(report)),
-      logger_(std::move(logger)) {}
+      logger_(std::move(logger)),
+      clock_(std::move(clock)) {}
 
 BT::PortsList PickNode::providedPorts() { return {BT::InputPort<SortJob>("job")}; }
 
@@ -391,7 +401,7 @@ BT::NodeStatus PickNode::onStart() {
   };
   try {
     goal_future_ = client_->async_send_goal(goal, options);
-    deadline_ = deadline_after(action_timeout_s_);
+    deadline_ = deadline_after(clock_, action_timeout_s_);
     return BT::NodeStatus::RUNNING;
   } catch (const std::exception& error) {
     record_failure(report_, failure_result("pick", "Pick goal failed: " + std::string(error.what())));
@@ -413,7 +423,7 @@ BT::NodeStatus PickNode::onRunning() {
       result_future_.wait_for(0s) == std::future_status::ready) {
     return finish(result_future_.get());
   }
-  if (std::chrono::steady_clock::now() >= deadline_) {
+  if (clock_->now() >= deadline_) {
     if (stage_ == Stage::waiting_goal) {
       record_failure(report_, failure_result("pick", "Pick goal response timed out"));
       return BT::NodeStatus::FAILURE;
@@ -435,7 +445,7 @@ void PickNode::request_cancel(const std::string& reason) {
     try {
       client_->async_cancel_goal(goal_handle_);
       stage_ = Stage::canceling;
-      deadline_ = deadline_after(cancel_timeout_s_);
+      deadline_ = deadline_after(clock_, cancel_timeout_s_);
     } catch (const std::exception& error) {
       record_failure(report_, failure_result("pick", reason + "; cancellation failed: " + error.what()));
     }
@@ -446,13 +456,14 @@ BT::NodeStatus PickNode::finish(const GoalHandle::WrappedResult& wrapped) { retu
 
 PlaceNode::PlaceNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
                      double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-                     rclcpp::Logger logger)
+                     rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
     : BT::StatefulActionNode(name, config),
       client_(std::move(client)),
       action_timeout_s_(action_timeout_s),
       cancel_timeout_s_(cancel_timeout_s),
       report_(std::move(report)),
-      logger_(std::move(logger)) {}
+      logger_(std::move(logger)),
+      clock_(std::move(clock)) {}
 
 BT::PortsList PlaceNode::providedPorts() { return {BT::InputPort<SortJob>("job")}; }
 
@@ -478,7 +489,7 @@ BT::NodeStatus PlaceNode::onStart() {
   };
   try {
     goal_future_ = client_->async_send_goal(goal, options);
-    deadline_ = deadline_after(action_timeout_s_);
+    deadline_ = deadline_after(clock_, action_timeout_s_);
     return BT::NodeStatus::RUNNING;
   } catch (const std::exception& error) {
     record_failure(report_, failure_result("place", "Place goal failed: " + std::string(error.what())));
@@ -500,7 +511,7 @@ BT::NodeStatus PlaceNode::onRunning() {
       result_future_.wait_for(0s) == std::future_status::ready) {
     return finish(result_future_.get());
   }
-  if (std::chrono::steady_clock::now() >= deadline_) {
+  if (clock_->now() >= deadline_) {
     if (stage_ == Stage::waiting_goal) {
       record_failure(report_, failure_result("place", "Place goal response timed out"));
       return BT::NodeStatus::FAILURE;
@@ -522,7 +533,7 @@ void PlaceNode::request_cancel(const std::string& reason) {
     try {
       client_->async_cancel_goal(goal_handle_);
       stage_ = Stage::canceling;
-      deadline_ = deadline_after(cancel_timeout_s_);
+      deadline_ = deadline_after(clock_, cancel_timeout_s_);
     } catch (const std::exception& error) {
       record_failure(report_, failure_result("place", reason + "; cancellation failed: " + error.what()));
     }

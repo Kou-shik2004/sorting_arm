@@ -43,6 +43,8 @@ void PerceptionViewer::run(std::stop_token stop_token) noexcept {
 
     while (!stop_token.stop_requested()) {
       {
+        // this worker owns no ROS clock and redraw is a wall-clock concern by nature -
+        // sim-timing it would freeze the window every time the sim pauses
         std::unique_lock<std::mutex> lock(frame_mutex_);
         frame_condition_.wait_for(lock, 33ms, [this, displayed_sequence] { return frame_sequence_ != displayed_sequence; });
         if (frame_sequence_ != displayed_sequence) {

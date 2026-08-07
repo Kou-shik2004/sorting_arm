@@ -16,7 +16,7 @@ compose_args
 ensure_up
 
 if ! workspace_built; then
-    echo "first time in - the workspace hasn't been built yet. Run cbuild, or exit and use ./scripts/demo."
+    echo "first time in - the workspace hasn't been built yet. Run colcon build --symlink-install, or exit and use ./scripts/demo."
 fi
 
 exec $DOCKER_CMD exec -it "$CONTAINER_NAME" /entrypoint.sh bash

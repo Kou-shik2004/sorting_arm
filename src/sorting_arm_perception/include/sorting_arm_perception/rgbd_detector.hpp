@@ -31,6 +31,8 @@ struct DetectorConfig {
   HsvRange blue;
   int minimum_saturation = 0;
   int minimum_value = 0;
+  std::size_t tuned_image_width = 0;
+  std::size_t tuned_image_height = 0;
   double minimum_contour_area = 0.0;
   std::size_t minimum_top_face_area = 0;
   double minimum_valid_depth_fraction = 0.0;

@@ -53,6 +53,8 @@ MotionCommander::MotionCommander(rclcpp::Node::SharedPtr node) : node_(std::move
 }
 
 void MotionCommander::load_trajectory_limits() {
+  // SyncParametersClient only takes wall-clock durations and spins its own private
+  // executor before ours ever starts - cant give it sim time without forking rclcpp itself
   auto parameter_client = std::make_shared<rclcpp::SyncParametersClient>(node_, "/move_group");
   const auto timeout = std::chrono::duration<double>(parameter_service_timeout_s_);
   if (!parameter_client->wait_for_service(timeout)) {

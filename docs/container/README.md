@@ -11,7 +11,8 @@ The image is built from `osrf/ros:jazzy-desktop-full`, with this workspace's own
 toolchain layered on from `.docker/packages/{base,ros,extra}.txt`, plus
 BehaviorTree.ROS2, which isn't packaged for apt and gets built from source into
 `/opt/underlay` from `.docker/underlay.repos`. The workspace itself isn't baked into
-the image; it's bind-mounted from the host and built with `cbuild` once you're inside.
+the image; it's bind-mounted from the host and built with
+`colcon build --symlink-install` once you're inside.
 
 The base compose file ships no named volumes: enter the container, build, source,
 launch, that's the whole offering. Two optional fragments add more automatically, and
@@ -66,20 +67,23 @@ that runs through the entrypoint - an interactive shell from `enter`, or a one-s
 `docker exec` from `demo` - gets the same environment as a result. Details, and the
 `docker exec` gap this doesn't cover, are in [compose.md](./compose.md#dockerentrypointsh).
 
-## The three shell functions
+## Building and testing
 
-`.docker/bashrc.sh` defines the functions used inside the container:
+No aliases - once you're in with `./scripts/enter`, `colcon` and `rosdep` are the
+same commands you'd run in any ROS 2 workspace:
 
 ```bash
-cbuild      # colcon build --symlink-install
-ctest_all   # colcon test, then colcon test-result --verbose
-cdeps       # rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install                             # from /sorting_arm_ws
+colcon test
+colcon test-result --verbose
+rosdep install --from-paths src --ignore-src -r -y
 ```
 
 A full image rebuild is only needed when `.docker/packages/*.txt`,
 `underlay.repos`, or the Dockerfile itself changes. Changes to workspace source under
-`src/` just need `cbuild` - see [daily-use.md](./daily-use.md#when-a-rebuild-is-actually-needed)
-for the complete table.
+`src/` just need `colcon build --symlink-install` - see
+[daily-use.md](./daily-use.md#when-a-rebuild-is-actually-needed) for the complete
+table.
 
 ## A second, smaller image for CI
 

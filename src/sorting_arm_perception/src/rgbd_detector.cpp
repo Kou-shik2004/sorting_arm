@@ -335,8 +335,28 @@ DetectorResult RgbdDetector::detect(const cv::Mat& rgb_image, const cv::Mat& dep
     result.phase = "object_count";
     result.message =
         "accepted " + std::to_string(accepted_count) + " of expected " + std::to_string(expected_count) + " cubes";
-    if (!rejections.empty()) {
-      result.message += "; first rejection: " + rejections.front();
+
+    // trays always land in rejections and always come first; skip them so a
+    // real cube's reject reason isnt hidden behind the tray box.
+    const std::string exclusion_suffix = ": inside tray exclusion area";
+    std::vector<std::string> significant_rejections;
+    for (const std::string& rejection : rejections) {
+      const bool is_tray = rejection.size() >= exclusion_suffix.size() &&
+                            rejection.compare(rejection.size() - exclusion_suffix.size(), exclusion_suffix.size(),
+                                               exclusion_suffix) == 0;
+      if (!is_tray) {
+        significant_rejections.push_back(rejection);
+      }
+    }
+    const std::vector<std::string>& reported = significant_rejections.empty() ? rejections : significant_rejections;
+    if (!reported.empty()) {
+      result.message += "; rejected: ";
+      for (std::size_t index = 0; index < reported.size(); ++index) {
+        if (index > 0) {
+          result.message += ", ";
+        }
+        result.message += reported[index];
+      }
     }
     cv::putText(result.debug_image, result.message, cv::Point(10, 25), cv::FONT_HERSHEY_SIMPLEX, 0.55,
                 cv::Scalar(255, 255, 0), 2, cv::LINE_AA);

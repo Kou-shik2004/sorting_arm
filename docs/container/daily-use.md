@@ -33,10 +33,10 @@ xhost +local:
 ## The build loop
 
 ```bash
-cbuild                                     # colcon build --symlink-install, from anywhere
-cbuild --packages-select sorting_arm_skills
+colcon build --symlink-install                            # from /sorting_arm_ws
+colcon build --symlink-install --packages-select sorting_arm_skills
 colcon test --packages-select sorting_arm_skills
-colcon test-result --verbose               # or: ctest_all
+colcon test-result --verbose
 ```
 
 `--symlink-install` means edits to Python, launch files, and configuration take
@@ -46,11 +46,11 @@ effect without rebuilding.
 
 | Change | Action |
 |---|---|
-| C++ source, launch, config | `cbuild`. Never a Docker rebuild |
+| C++ source, launch, config | `colcon build --symlink-install`. Never a Docker rebuild |
 | Shell configuration (`.docker/bashrc.sh`) | Open a new terminal. It's read from the bind mount |
 | colcon defaults | Nothing - read from the repo at build time |
 | A new apt package | Add it to `.docker/packages/extra.txt`, then `./scripts/build`. Seconds |
-| A new ROS dependency of a package | Add it to `package.xml`, then `cdeps`. Never a Docker rebuild |
+| A new ROS dependency of a package | Add it to `package.xml`, then `rosdep install --from-paths src --ignore-src -r -y`. Never a Docker rebuild |
 | A new source-only dependency | Add an entry to `.docker/underlay.repos` and its package names to `--packages-select` in the Dockerfile, then `./scripts/build`. Long - it re-runs everything below the underlay |
 
 After a rebuild, VS Code needs **Dev Containers: Rebuild Container** to recreate the

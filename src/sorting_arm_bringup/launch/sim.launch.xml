@@ -5,7 +5,7 @@
         default="$(find-pkg-share sorting_arm_bringup)/rviz/final_moveit.rviz" />
     <arg name="camera_width" default="1280" />
     <arg name="camera_height" default="960" />
-    <arg name="camera_update_rate" default="20" />
+    <arg name="camera_update_rate" default="30" />
 
     <append_env name="GZ_SIM_RESOURCE_PATH" value="$(find-pkg-share sorting_arm_description)/.." />
     <let name="urdf_file_path"
@@ -17,11 +17,13 @@
     <let name="world_file_path"
         value="$(find-pkg-share sorting_arm_bringup)/worlds/sorting_cell.sdf" />
 
+    <!-- has to sit above every node in this file, set_parameter only reaches nodes
+         declared after it - the bridge missed it living below here before -->
+    <set_parameter name="use_sim_time" value="true" />
+
     <node pkg="ros_gz_bridge" exec="parameter_bridge">
         <param name="config_file" value="$(var gazebo_config_path)" />
     </node>
-
-    <set_parameter name="use_sim_time" value="true" />
 
     <node pkg="robot_state_publisher" exec="robot_state_publisher">
         <param name="robot_description"
@@ -56,8 +58,8 @@
     <!-- Main moveit python launch file -->
     <include file="$(find-pkg-share sorting_arm_moveit)/launch/move_group.launch.py" />
 
-    <group if="$(var gui)">
+    <!-- <group if="$(var gui)">
         <node pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)" />
-    </group>
+    </group> -->
 
 </launch>

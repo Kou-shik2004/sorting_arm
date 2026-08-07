@@ -3,6 +3,10 @@
     <arg name="show_viewer" default="true"/>
     <arg name="viewer_scale" default="1.0"/>
 
+    <!-- capture_timeout in perception.yaml is a sim-time budget - launched standalone
+         this file had no sim time at all before, same trap as sim.launch.xml -->
+    <set_parameter name="use_sim_time" value="true"/>
+
     <node pkg="sorting_arm_perception" exec="camera_object_provider" output="screen">
         <param from="$(find-pkg-share sorting_arm_perception)/config/perception.yaml"/>
         <param name="show_viewer" value="$(var show_viewer)"/>

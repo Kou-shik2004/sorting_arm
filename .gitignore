@@ -9,6 +9,12 @@ log/
 !/docs/architecture.md
 !/docs/container/
 !/docs/container/**
+!/docs/ci.md
+
+# Demo clip only - the raw, uncompressed recording next to it stays ignored.
+!/docs/videos/
+/docs/videos/*
+!/docs/videos/output.mp4
 
 # Local AI configuration and formatting policy.
 .claude/
@@ -26,5 +32,5 @@ AGENTS.md
 .agents/
 .playwright-cli/
 
-# Koushik's personal container setup, kept but never shipped.
+# my personal container setup
 .private/

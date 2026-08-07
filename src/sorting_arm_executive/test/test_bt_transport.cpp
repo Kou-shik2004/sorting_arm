@@ -80,7 +80,8 @@ BT::Tree pick_tree(const rclcpp::Node::SharedPtr& client_node, const std::shared
                    double action_timeout_s, double cancel_timeout_s) {
   auto client = rclcpp_action::create_client<Pick>(client_node, "pick");
   BT::BehaviorTreeFactory factory;
-  factory.registerNodeType<PickNode>("Pick", client, action_timeout_s, cancel_timeout_s, report, client_node->get_logger());
+  factory.registerNodeType<PickNode>("Pick", client, action_timeout_s, cancel_timeout_s, report, client_node->get_logger(),
+                                     client_node->get_clock());
   auto blackboard = BT::Blackboard::create();
   SortJob job;
   job.object_id = "box_1";

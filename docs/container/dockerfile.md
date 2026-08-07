@@ -182,12 +182,12 @@ Both `ENV` lines below it are set in the Dockerfile rather than in `bashrc.sh`, 
 that's the point: `docker exec` never runs `ENTRYPOINT`, so a value exported only
 there never reaches an exec'd shell or a VS Code terminal. An `ENV` reaches PID 1,
 every `docker exec`, and every hook process at once. `RMW_IMPLEMENTATION` picks
-Cyclone DDS; `AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS` keeps `ctest_all` running the same
+Cyclone DDS; `AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS` keeps `colcon test` running the same
 cppcheck CI runs, rather than silently skipping it because cppcheck 2.13 fails its own
 internal speed check.
 
-`rosdep update` seeds the user's rosdep cache, so `cdeps` has an index to resolve
-against without a first-run fetch.
+`rosdep update` seeds the user's rosdep cache, so `rosdep install` has an index to
+resolve against without a first-run fetch.
 
 ## Extra tooling: where new packages go
 
@@ -204,13 +204,13 @@ re-runs the ROS install and the underlay build. If `extra.txt` grows long enough
 matter, promote its contents into `base.txt` or `ros.txt` and leave it holding one
 package again.
 
-## Workspace dependencies: `cdeps`, not a build layer
+## Workspace dependencies: resolved at runtime, not a build layer
 
 There's no `rosdep install` layer reading `package.xml` in this Dockerfile.
 Dependencies declared by packages under `src/` are resolved at runtime instead:
 
 ```bash
-cdeps   # rosdep install --from-paths src --ignore-src -r -y, from anywhere
+rosdep install --from-paths src --ignore-src -r -y   # from /sorting_arm_ws
 ```
 
 A build-time layer would re-run on every manifest edit, and the bind mount always has

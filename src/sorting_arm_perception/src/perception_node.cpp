@@ -144,6 +144,14 @@ void PerceptionNode::load_parameters() {
   detector_config_.minimum_saturation = static_cast<int>(minimum_saturation);
   detector_config_.minimum_value = static_cast<int>(minimum_value);
 
+  const std::int64_t tuned_image_width = declare_parameter<std::int64_t>("detector.tuned_image_width");
+  const std::int64_t tuned_image_height = declare_parameter<std::int64_t>("detector.tuned_image_height");
+  if (tuned_image_width <= 0 || tuned_image_height <= 0) {
+    throw std::runtime_error("detector.tuned_image_width and tuned_image_height must be positive");
+  }
+  detector_config_.tuned_image_width = static_cast<std::size_t>(tuned_image_width);
+  detector_config_.tuned_image_height = static_cast<std::size_t>(tuned_image_height);
+
   detector_config_.minimum_contour_area = declare_parameter<double>("detector.minimum_contour_area");
   const std::int64_t minimum_top_face_area = declare_parameter<std::int64_t>("detector.minimum_top_face_area");
   detector_config_.minimum_valid_depth_fraction = declare_parameter<double>("detector.minimum_valid_depth_fraction");
@@ -256,6 +264,12 @@ void PerceptionNode::joint_state_callback(sensor_msgs::msg::JointState::ConstSha
 bool PerceptionNode::validate_camera_info(const sensor_msgs::msg::CameraInfo& camera_info, std::string& error) const {
   if (camera_info.width == 0 || camera_info.height == 0) {
     error = "image dimensions are zero";
+    return false;
+  }
+  if (camera_info.width != detector_config_.tuned_image_width || camera_info.height != detector_config_.tuned_image_height) {
+    error = "pixel-area limits are tuned for " + std::to_string(detector_config_.tuned_image_width) + "x" +
+            std::to_string(detector_config_.tuned_image_height) + ", stream is " + std::to_string(camera_info.width) + "x" +
+            std::to_string(camera_info.height);
     return false;
   }
   if (camera_info.header.frame_id.empty()) {

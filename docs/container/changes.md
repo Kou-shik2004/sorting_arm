@@ -10,6 +10,13 @@ change log with the reasoning attached.
 > maintainer-only `.private/Dockerfile` (7 Aug 2026). The decisions below shaped both;
 > anything specific to the private image's agent tooling has been left out.
 
+> [!NOTE]
+> `cbuild`, `ctest_all`, and `cdeps`, mentioned below, were removed from
+> `.docker/bashrc.sh` for the public release (8 Aug 2026). The reasoning in this file
+> about *why* runtime `rosdep` resolution beats a build-time layer still holds; only
+> the shell function wrapping it is gone. Public docs now give the raw `colcon` /
+> `rosdep` commands.
+
 ## At a glance
 
 | Change | File | Why |

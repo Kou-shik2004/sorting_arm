@@ -1,6 +1,5 @@
 #pragma once
 
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <future>
@@ -13,7 +12,9 @@
 #include "behaviortree_cpp/action_node.h"
 #include "behaviortree_cpp/bt_factory.h"
 #include "rclcpp/client.hpp"
+#include "rclcpp/clock.hpp"
 #include "rclcpp/logger.hpp"
+#include "rclcpp/time.hpp"
 #include "rclcpp_action/client.hpp"
 #include "sorting_arm_executive/assignment_planner.hpp"
 #include "sorting_arm_interfaces/action/home.hpp"
@@ -88,7 +89,7 @@ class DetectObjectsNode : public BT::StatefulActionNode {
   using Service = sorting_arm_interfaces::srv::DetectObjects;
 
   DetectObjectsNode(const std::string& name, const BT::NodeConfig& config, rclcpp::Client<Service>::SharedPtr client,
-                    double timeout_s, std::shared_ptr<ExecutionReport> report);
+                    double timeout_s, std::shared_ptr<ExecutionReport> report, rclcpp::Clock::SharedPtr clock);
 
   static BT::PortsList providedPorts();
 
@@ -100,8 +101,9 @@ class DetectObjectsNode : public BT::StatefulActionNode {
   rclcpp::Client<Service>::SharedPtr client_;
   double timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_;
+  rclcpp::Clock::SharedPtr clock_;
   std::optional<rclcpp::Client<Service>::FutureAndRequestId> pending_;
-  std::chrono::steady_clock::time_point deadline_;
+  rclcpp::Time deadline_;
 };
 
 class SyncObjectsNode : public BT::StatefulActionNode {
@@ -109,7 +111,7 @@ class SyncObjectsNode : public BT::StatefulActionNode {
   using Service = sorting_arm_interfaces::srv::SyncObjects;
 
   SyncObjectsNode(const std::string& name, const BT::NodeConfig& config, rclcpp::Client<Service>::SharedPtr client,
-                  double timeout_s, std::shared_ptr<ExecutionReport> report);
+                  double timeout_s, std::shared_ptr<ExecutionReport> report, rclcpp::Clock::SharedPtr clock);
 
   static BT::PortsList providedPorts();
 
@@ -121,8 +123,9 @@ class SyncObjectsNode : public BT::StatefulActionNode {
   rclcpp::Client<Service>::SharedPtr client_;
   double timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_;
+  rclcpp::Clock::SharedPtr clock_;
   std::optional<rclcpp::Client<Service>::FutureAndRequestId> pending_;
-  std::chrono::steady_clock::time_point deadline_;
+  rclcpp::Time deadline_;
 };
 
 class HomeNode : public BT::StatefulActionNode {
@@ -131,7 +134,8 @@ class HomeNode : public BT::StatefulActionNode {
   using GoalHandle = rclcpp_action::ClientGoalHandle<Action>;
 
   HomeNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
-           double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report, rclcpp::Logger logger);
+           double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
+           rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
 
   static BT::PortsList providedPorts();
 
@@ -149,11 +153,12 @@ class HomeNode : public BT::StatefulActionNode {
   double cancel_timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_;
   rclcpp::Logger logger_;
+  rclcpp::Clock::SharedPtr clock_;
   Stage stage_ = Stage::waiting_goal;
   std::shared_future<GoalHandle::SharedPtr> goal_future_;
   std::shared_future<GoalHandle::WrappedResult> result_future_;
   GoalHandle::SharedPtr goal_handle_;
-  std::chrono::steady_clock::time_point deadline_;
+  rclcpp::Time deadline_;
 };
 
 class PickNode : public BT::StatefulActionNode {
@@ -162,7 +167,8 @@ class PickNode : public BT::StatefulActionNode {
   using GoalHandle = rclcpp_action::ClientGoalHandle<Action>;
 
   PickNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
-           double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report, rclcpp::Logger logger);
+           double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
+           rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
 
   static BT::PortsList providedPorts();
 
@@ -180,11 +186,12 @@ class PickNode : public BT::StatefulActionNode {
   double cancel_timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_;
   rclcpp::Logger logger_;
+  rclcpp::Clock::SharedPtr clock_;
   Stage stage_ = Stage::waiting_goal;
   std::shared_future<GoalHandle::SharedPtr> goal_future_;
   std::shared_future<GoalHandle::WrappedResult> result_future_;
   GoalHandle::SharedPtr goal_handle_;
-  std::chrono::steady_clock::time_point deadline_;
+  rclcpp::Time deadline_;
 };
 
 class PlaceNode : public BT::StatefulActionNode {
@@ -194,7 +201,7 @@ class PlaceNode : public BT::StatefulActionNode {
 
   PlaceNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
             double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-            rclcpp::Logger logger);
+            rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
 
   static BT::PortsList providedPorts();
 
@@ -212,11 +219,12 @@ class PlaceNode : public BT::StatefulActionNode {
   double cancel_timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_;
   rclcpp::Logger logger_;
+  rclcpp::Clock::SharedPtr clock_;
   Stage stage_ = Stage::waiting_goal;
   std::shared_future<GoalHandle::SharedPtr> goal_future_;
   std::shared_future<GoalHandle::WrappedResult> result_future_;
   GoalHandle::SharedPtr goal_handle_;
-  std::chrono::steady_clock::time_point deadline_;
+  rclcpp::Time deadline_;
 };
 
 void register_policy_nodes(BT::BehaviorTreeFactory& factory, AssignmentPlanner planner,

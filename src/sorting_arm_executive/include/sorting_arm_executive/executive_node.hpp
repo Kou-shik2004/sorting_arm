@@ -52,6 +52,8 @@ class ExecutiveNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr timer_;
   CycleState state_ = CycleState::waiting_for_readiness;
   bool controllers_ready_ = false;
+  // readiness is "is my ROS graph up", not simulated-world progress - stays wall time so
+  // a Gazebo that never starts (never publishes /clock) still fails loud instead of hanging
   std::chrono::steady_clock::time_point readiness_deadline_;
   std::chrono::steady_clock::time_point next_controller_query_;
 };

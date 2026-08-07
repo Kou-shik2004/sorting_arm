@@ -1,36 +1,44 @@
 <launch>
 
     <arg name="skills_config"
-         default="$(find-pkg-share sorting_arm_skills)/config/skills.yaml"/>
+        default="$(find-pkg-share sorting_arm_skills)/config/skills.yaml" />
     <arg name="executive_config"
-         default="$(find-pkg-share sorting_arm_executive)/config/sorting.yaml"/>
-    <arg name="use_camera_provider" default="true"/>
-    <arg name="show_viewer" default="true"/>
+        default="$(find-pkg-share sorting_arm_executive)/config/sorting.yaml" />
+    <arg name="use_camera_provider" default="true" />
+    <arg name="show_viewer" default="true" />
+    <arg name="camera_update_rate" default="30" />
+    <arg name="viewer_scale" default="1.0" />
 
     <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim.launch.xml">
-        <arg name="gui" value="true"/>
+        <arg name="gui" value="true" />
+        <!-- we pin these instead of dropping them - includes share one launch-config
+             namespace, so an undeclared camera_width:= on the CLI still leaks in otherwise -->
+        <arg name="camera_width" value="1280" />
+        <arg name="camera_height" value="960" />
+        <arg name="camera_update_rate" value="$(var camera_update_rate)" />
     </include>
 
-    <set_parameter name="use_sim_time" value="true"/>
+    <set_parameter name="use_sim_time" value="true" />
 
     <node pkg="sorting_arm_skills" exec="skill_server_node" output="screen">
-        <param from="$(var skills_config)"/>
+        <param from="$(var skills_config)" />
     </node>
 
     <group if="$(var use_camera_provider)">
         <include file="$(find-pkg-share sorting_arm_bringup)/launch/perception.launch.xml">
-            <arg name="show_viewer" value="$(var show_viewer)"/>
+            <arg name="show_viewer" value="$(var show_viewer)" />
+            <arg name="viewer_scale" value="$(var viewer_scale)" />
         </include>
     </group>
 
     <group unless="$(var use_camera_provider)">
         <node pkg="sorting_arm_executive" exec="fixed_object_provider" output="screen">
-            <param from="$(var executive_config)"/>
+            <param from="$(var executive_config)" />
         </node>
     </group>
 
     <node pkg="sorting_arm_executive" exec="executive_node" output="screen">
-        <param from="$(var executive_config)"/>
+        <param from="$(var executive_config)" />
     </node>
 
 </launch>

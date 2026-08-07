@@ -188,7 +188,8 @@ infinity`) and anything launched with `docker run`.
 
 That's why `bashrc.sh` repeats the same three `source` lines: the two scripts cover
 different entry paths, and neither covers both on its own. The workspace overlay is
-sourced conditionally because it doesn't exist until the first `cbuild`.
+sourced conditionally because it doesn't exist until the first
+`colcon build --symlink-install`.
 
 **To run a ROS command through `docker exec` without an interactive shell, call the
 entrypoint explicitly:**
@@ -205,12 +206,11 @@ for exactly this reason.
 ## `.docker/bashrc.sh`
 
 Interactive-shell setup only; it returns immediately for anything non-interactive.
-Beyond the same three `source` lines as the entrypoint, it defines `cbuild`,
-`ctest_all`, and `cdeps` (see the README's [Working inside the
-container](../../README.md#working-inside-the-container)), points `COLCON_HOME` at
+Beyond the same three `source` lines as the entrypoint, it points `COLCON_HOME` at
 `.docker/colcon` so colcon config survives a container recreate, and redirects
 `HISTFILE` to `/commandhistory` so history survives one too, when the `--dev` volume
-is mounted.
+is mounted. No build or test aliases - `colcon` and `rosdep` are run directly, see the
+README's [Building the workspace](../../README.md#building-the-workspace).
 
 ## `.docker/colcon/defaults.yaml`
 

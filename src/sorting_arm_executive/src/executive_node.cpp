@@ -18,6 +18,8 @@ namespace {
 
 using namespace std::chrono_literals;
 
+// readiness is discovery, not simulated-world progress - stays wall time so a Gazebo that
+// never comes up still times out instead of waiting on a /clock that will never publish
 std::chrono::steady_clock::time_point deadline_after(double seconds) {
   const auto duration =
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds));
@@ -48,14 +50,15 @@ ExecutiveNode::ExecutiveNode(const rclcpp::NodeOptions& options) : Node("sorting
 
   const auto cycle_state = std::make_shared<AdaptiveCycleState>(config_.cycle_object_count);
   register_policy_nodes(factory_, *planner_, cycle_state, report_);
-  factory_.registerNodeType<DetectObjectsNode>("DetectObjects", detect_client_, config_.detect_timeout_s, report_);
-  factory_.registerNodeType<SyncObjectsNode>("SyncObjects", sync_client_, config_.sync_timeout_s, report_);
+  factory_.registerNodeType<DetectObjectsNode>("DetectObjects", detect_client_, config_.detect_timeout_s, report_,
+                                               get_clock());
+  factory_.registerNodeType<SyncObjectsNode>("SyncObjects", sync_client_, config_.sync_timeout_s, report_, get_clock());
   factory_.registerNodeType<HomeNode>("Home", home_client_, config_.action_timeout_s, config_.cancel_timeout_s, report_,
-                                      get_logger());
+                                      get_logger(), get_clock());
   factory_.registerNodeType<PickNode>("Pick", pick_client_, config_.action_timeout_s, config_.cancel_timeout_s, report_,
-                                      get_logger());
+                                      get_logger(), get_clock());
   factory_.registerNodeType<PlaceNode>("Place", place_client_, config_.action_timeout_s, config_.cancel_timeout_s, report_,
-                                       get_logger());
+                                       get_logger(), get_clock());
 
   const auto tree_path =
       ament_index_cpp::get_package_share_directory("sorting_arm_executive") + "/behavior_trees/sorting_cycle.xml";
