@@ -7,8 +7,6 @@
 ![MoveIt](https://img.shields.io/badge/MoveIt-2-blueviolet)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-
-
 https://github.com/user-attachments/assets/712d5a2e-bca9-482f-95df-b3a75069dd2b
 
 *Partway through, I clear every cube off the table by hand and set them back down
@@ -22,15 +20,18 @@ each pick instead of working from one snapshot taken at the start.*
 > documentation, and code and naming cleanup are all in progress. Expect this repo to
 > keep changing.
 
+## About
+
 Four cubes sit on a table in front of the arm, two red and two blue. The arm looks at
 the table, finds one cube by its colour, picks it up, drops it in the tray for that
 colour, returns to its observation pose, and looks again. It repeats that until all
 four cubes are sorted.
 
-The arm is a UR5e with a Robotiq 2F-85 two-finger gripper, simulated in Gazebo.
-**MoveIt 2** plans and executes every arm motion; the gripper is driven directly, not
-through MoveIt. A **BehaviorTree** decides what happens next and in what order, and
-hands the actual work off to the motion and detection layers underneath it.
+- The arm is a UR5e with a Robotiq 2F-85 two-finger gripper, simulated in Gazebo.
+- **MoveIt 2** plans and executes every arm motion; the gripper is driven directly,
+  not through MoveIt.
+- A **BehaviorTree** decides what happens next and in what order, and hands the
+  actual work off to the motion and detection layers underneath it.
 
 Everything runs in a Docker container that this repository builds for you. Docker is
 the only thing you install on the host. There is no ROS installation to set up and no
@@ -190,11 +191,14 @@ GPU you do have is the thing causing trouble.
 | `demo` | Starts the container if needed, builds the workspace if it hasn't been built, runs `app.launch.xml` | Rebuild the workspace on every run (only the first) |
 | `stop` | Tears the container down | Touch the `--dev` named volumes; they survive for next time |
 
-`start`, `enter`, `demo`, and `stop` all accept `--dev`, which adds named volumes for
-VS Code Server and bash history so they survive a container rebuild, and `--gpu` /
-`--no-gpu`, which force the NVIDIA compose fragment on or off. `build` reads neither.
-It only builds the image. The container itself is named `sorting_arm`, and this
-repository is bind-mounted into it at `/sorting_arm_ws`.
+`start`, `enter`, `demo`, and `stop` all accept two flags:
+
+- `--dev`, which adds named volumes for VS Code Server and bash history so they
+  survive a container rebuild
+- `--gpu` / `--no-gpu`, which force the NVIDIA compose fragment on or off
+
+`build` reads neither. It only builds the image. The container itself is named
+`sorting_arm`, and this repository is bind-mounted into it at `/sorting_arm_ws`.
 
 Every script is a thin wrapper around `docker compose` or `docker exec`. If you'd
 rather not use them, here's what each one runs:
@@ -208,13 +212,17 @@ rather not use them, here's what each one runs:
 | `stop` | `docker compose -f docker-compose.yaml [...] down` |
 
 The `-f` fragments in brackets are picked automatically, and at most one of the first
-pair is ever added: `.docker/compose.gpu.yaml` when the NVIDIA runtime is detected
-(or `--gpu` forces it), else `.docker/compose.dri.yaml` when `/dev/dri` exists (every
-Intel/AMD laptop), then `.docker/compose.dev.yaml` whenever `--dev` is passed on top
-of either. `start`, `enter`, and `demo` also run `xhost +local:` before bringing the
-container up, so RViz and Gazebo windows are allowed through; `build` and `stop`
-don't touch X11 at all, and a raw `docker compose up` skips it too - you'll need to
-run it yourself.
+pair is ever added:
+
+- `.docker/compose.gpu.yaml` when the NVIDIA runtime is detected (or `--gpu` forces
+  it)
+- else `.docker/compose.dri.yaml` when `/dev/dri` exists (every Intel/AMD laptop)
+- then `.docker/compose.dev.yaml` whenever `--dev` is passed on top of either
+
+`start`, `enter`, and `demo` also run `xhost +local:` before bringing the container
+up, so RViz and Gazebo windows are allowed through; `build` and `stop` don't touch
+X11 at all, and a raw `docker compose up` skips it too - you'll need to run it
+yourself.
 
 If your user can't reach the Docker daemon without `sudo`, the scripts detect that
 and fall back to running every `docker`/`docker compose` command above as
@@ -233,9 +241,11 @@ rosdep install --from-paths src --ignore-src -r -y   # only if a dependency is m
 `./scripts/demo` only ever builds the workspace once, the first time it finds no
 `install/setup.bash`; it never rebuilds on a later run even if you've edited source.
 After changing code, run `colcon build --symlink-install` yourself from inside
-`./scripts/enter` before the next `./scripts/demo`. If a build fails partway through
-but still produces `install/setup.bash`, `demo` will keep skipping straight to the
-launch on every following run - build again to get a real error instead.
+`./scripts/enter` before the next `./scripts/demo`.
+
+If a build fails partway through but still produces `install/setup.bash`, `demo`
+will keep skipping straight to the launch on every following run - build again to
+get a real error instead.
 
 ## Launch files
 
@@ -262,14 +272,16 @@ RViz. `moveit.launch.xml` plans and previews motion without waiting for a physic
 simulation to start. `skills.launch.xml` lets you call `Pick`, `Place`, or `Home` by
 hand and watch each one happen in isolation.
 
-On `app.launch.xml`, `use_camera_provider:=false` swaps the wrist camera for
-`fixed_object_provider`, which reads hardcoded cube positions from
-`src/sorting_arm_executive/config/sorting.yaml` and answers the same detection
-service, useful for testing pick and place without perception in the loop.
-`show_viewer` and `viewer_scale` are passed straight through to
-`perception.launch.xml` and only do anything when the camera provider is running.
-`gui` is not one of `app.launch.xml`'s arguments - the full app always runs the
-Gazebo GUI. Only `sim.launch.xml` can go headless.
+On `app.launch.xml`:
+
+- `use_camera_provider:=false` swaps the wrist camera for `fixed_object_provider`,
+  which reads hardcoded cube positions from
+  `src/sorting_arm_executive/config/sorting.yaml` and answers the same detection
+  service, useful for testing pick and place without perception in the loop.
+- `show_viewer` and `viewer_scale` are passed straight through to
+  `perception.launch.xml` and only do anything when the camera provider is running.
+- `gui` is not one of `app.launch.xml`'s arguments - the full app always runs the
+  Gazebo GUI. Only `sim.launch.xml` can go headless.
 
 ```bash
 ros2 launch sorting_arm_bringup sim.launch.xml gui:=false
@@ -304,6 +316,7 @@ ros2 launch sorting_arm_bringup app.launch.xml viewer_scale:=0.5
 full app.** The wrist camera renders at 1280x960 at 30 Hz by default, and that's the
 most expensive part of every frame - but `camera_width` and `camera_height` are not
 `app.launch.xml` arguments, and that's deliberate.
+
 `src/sorting_arm_perception/config/perception.yaml`'s `minimum_contour_area` (400 px)
 and `minimum_top_face_area` (480 px) are pixel counts calibrated at exactly that
 resolution and don't scale down on their own. Halve the resolution and a cube's
