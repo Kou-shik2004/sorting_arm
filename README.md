@@ -1,4 +1,4 @@
-# Sorting-arm
+# Simulated Colour-Sorting Robot Arm
 
 **A simulated UR5e cell that finds cubes by colour with a wrist camera and sorts them into trays.**
 
@@ -11,7 +11,9 @@
 
 https://github.com/user-attachments/assets/712d5a2e-bca9-482f-95df-b3a75069dd2b
 
-
+*Partway through, I clear every cube off the table by hand and set them back down
+somewhere else. The arm still finds and sorts them, because it looks again before
+each pick instead of working from one snapshot taken at the start.*
 
 > [!NOTE]
 > **Status:** the sorting cycle above is complete and runs end to end - this isn't a
