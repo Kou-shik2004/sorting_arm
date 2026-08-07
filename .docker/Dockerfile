@@ -98,6 +98,11 @@ ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
+# CI's runtime image already sets this - without it here, ctest_all silently
+# skips cppcheck and only CI catches what it would have found
+
+ENV AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS=1
+
 RUN rosdep update
 
 # Extra installs

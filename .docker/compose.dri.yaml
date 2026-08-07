@@ -1,0 +1,9 @@
+# Intel/AMD integrated graphics, opt-in. /dev/dri only exists with a real GPU
+# node behind it - scripts/start only adds this file when it finds one and
+# no NVIDIA runtime. Add manually with:
+#   docker compose -f docker-compose.yaml -f .docker/compose.dri.yaml up -d
+
+services:
+  dev:
+    devices:
+      - /dev/dri:/dev/dri

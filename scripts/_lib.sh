@@ -44,6 +44,12 @@ has_nvidia_runtime() {
     $DOCKER_CMD info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia
 }
 
+# Intel/AMD integrated graphics render node - nvidia has its own path above,
+# this is the fallback so llvmpipe isnt the only option on a laptop GPU.
+has_dri() {
+    [ -e /dev/dri ]
+}
+
 # Reads --dev / --gpu / --no-gpu off "$@", leaves the rest in REMAINING_ARGS.
 parse_common_flags() {
     SORTING_ARM_DEV=0
@@ -60,11 +66,14 @@ parse_common_flags() {
 }
 
 # Fills the COMPOSE_ARGS array. Call after require_docker (GPU detection
-# needs a working docker) and parse_common_flags.
+# needs a working docker) and parse_common_flags. nvidia beats dri beats
+# neither - --no-gpu drops both and leaves rendering to llvmpipe.
 compose_args() {
     COMPOSE_ARGS=(-f docker-compose.yaml)
     if [ "${SORTING_ARM_GPU:-auto}" = "on" ] || { [ "${SORTING_ARM_GPU:-auto}" = "auto" ] && has_nvidia_runtime; }; then
         COMPOSE_ARGS+=(-f .docker/compose.gpu.yaml)
+    elif [ "${SORTING_ARM_GPU:-auto}" = "auto" ] && has_dri; then
+        COMPOSE_ARGS+=(-f .docker/compose.dri.yaml)
     fi
     if [ "${SORTING_ARM_DEV:-0}" = "1" ]; then
         COMPOSE_ARGS+=(-f .docker/compose.dev.yaml)

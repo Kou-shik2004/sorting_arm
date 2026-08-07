@@ -4,6 +4,9 @@
   <xacro:arg name="controllers_file" default=""/>
   <xacro:arg name="initial_positions_file"
              default="$(find sorting_arm_description)/config/initial_positions.yaml"/>
+  <xacro:arg name="camera_width" default="1280"/>
+  <xacro:arg name="camera_height" default="960"/>
+  <xacro:arg name="camera_update_rate" default="20"/>
   <xacro:property name="initial_positions_file" value="$(arg initial_positions_file)"/>
   <xacro:property name="initial_positions"
                   value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
@@ -16,8 +19,8 @@
       <camera>
         <horizontal_fov>1.5708</horizontal_fov>
         <image>
-          <width>1280</width>
-          <height>960</height>
+          <width>$(arg camera_width)</width>
+          <height>$(arg camera_height)</height>
           <format>R8G8B8</format>
         </image>
         <clip>
@@ -28,7 +31,7 @@
         <camera_info_topic>/camera/camera_info</camera_info_topic>
       </camera>
       <always_on>true</always_on>
-      <update_rate>20</update_rate>
+      <update_rate>$(arg camera_update_rate)</update_rate>
       <visualize>true</visualize>
       <topic>camera</topic>
       <gz_frame_id>$(arg tf_prefix)camera_link_optical</gz_frame_id>

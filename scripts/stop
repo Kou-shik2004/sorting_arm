@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# Tears the container down. Named volumes from --dev survive; the container
+# itself does not - ./scripts/start (or enter/demo) brings it back.
+#
+# Flags: --dev / --gpu / --no-gpu - see ./scripts/start, same -f set as up
+
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+cd "$REPO_ROOT"
+
+parse_common_flags "$@"
+require_docker
+compose_args
+
+$DOCKER_CMD compose "${COMPOSE_ARGS[@]}" down
+
+echo
+echo "container is down. ./scripts/start to bring it back up."

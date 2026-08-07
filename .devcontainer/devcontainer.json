@@ -1,6 +1,9 @@
 {
   "name": "sorting_arm",
-  "dockerComposeFile": "../docker-compose.yaml",
+  "dockerComposeFile": [
+    "../docker-compose.yaml",
+    "../.docker/compose.dev.yaml"
+  ],
   "service": "dev",
   "workspaceFolder": "/sorting_arm_ws",
   "remoteUser": "rosdev",

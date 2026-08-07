@@ -3,6 +3,9 @@
     <arg name="gui" default="true" />
     <arg name="rviz_config"
         default="$(find-pkg-share sorting_arm_bringup)/rviz/final_moveit.rviz" />
+    <arg name="camera_width" default="1280" />
+    <arg name="camera_height" default="960" />
+    <arg name="camera_update_rate" default="20" />
 
     <append_env name="GZ_SIM_RESOURCE_PATH" value="$(find-pkg-share sorting_arm_description)/.." />
     <let name="urdf_file_path"
@@ -22,7 +25,7 @@
 
     <node pkg="robot_state_publisher" exec="robot_state_publisher">
         <param name="robot_description"
-            value="$(command 'xacro $(var urdf_file_path) controllers_file:=$(var controllers_file_path)')"
+            value="$(command 'xacro $(var urdf_file_path) controllers_file:=$(var controllers_file_path) camera_width:=$(var camera_width) camera_height:=$(var camera_height) camera_update_rate:=$(var camera_update_rate)')"
             type="str" />
     </node>
 

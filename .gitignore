@@ -7,7 +7,8 @@ log/
 !/docs/rca/
 !/docs/rca/**
 !/docs/architecture.md
-!/docs/container.md
+!/docs/container/
+!/docs/container/**
 
 # Local AI configuration and formatting policy.
 .claude/
