@@ -21,6 +21,8 @@ on:
         required: false
         default: false
         type: boolean
+  schedule:
+    - cron: '0 3 * * 1'
 
 permissions:
   contents: read
@@ -129,3 +131,66 @@ jobs:
           fi
 
           exit "${smoke_status}"
+
+  full-cycle:
+    name: Non-blocking full sorting cycle
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and load the full-cycle image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .docker/runtime/Dockerfile
+          target: smoke
+          load: true
+          tags: sorting_arm_full_cycle:${{ github.sha }}
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            GITHUB_RUN_ID=${{ github.run_id }}
+          cache-from: |
+            type=gha,scope=sorting-arm-ci
+            type=gha,scope=sorting-arm-runtime
+          cache-to: type=gha,mode=max,scope=sorting-arm-runtime,ignore-error=true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_image }}
+          push: false
+
+      - name: Run the full sorting cycle
+        id: full_cycle
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          set +e
+          timeout --signal=INT --kill-after=15s 1200s \
+            docker run --rm --init \
+              --env ROS_DOMAIN_ID=42 \
+              --shm-size=512m \
+              "sorting_arm_full_cycle:${GITHUB_SHA}" \
+              launch_test --verbose /opt/sorting_arm_smoke/test_full_cycle.py \
+            2>&1 | tee full-cycle.log
+          full_cycle_status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "${full_cycle_status}" -eq 124 ]; then
+            echo "Full sorting cycle exceeded 1200 seconds" >&2
+          fi
+
+          exit "${full_cycle_status}"
+
+      - name: Upload full-cycle log
+        if: steps.full_cycle.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-cycle-log-${{ github.run_id }}
+          path: full-cycle.log
+          if-no-files-found: error

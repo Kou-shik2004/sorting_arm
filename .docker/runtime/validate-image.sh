@@ -18,7 +18,7 @@ test "$(
 )" = '["/usr/local/bin/sorting-arm-entrypoint"]'
 test "$(
   docker image inspect --format '{{json .Config.Cmd}}' "${image}"
-)" = '["ros2","launch","sorting_arm_bringup","sim.launch.xml","gui:=false"]'
+)" = '["ros2","launch","sorting_arm_bringup","app.launch.xml","gui:=false","show_viewer:=false"]'
 
 docker run --rm --user root "${image}" bash -c '
   set -euo pipefail
@@ -56,7 +56,7 @@ docker run --rm \
     test "$(cat /sorting_arm_ws/.ci/test-passed.sha)" = "${EXPECTED_SHA}"
     ros2 pkg prefix sorting_arm_bringup
 
-    launch_arguments="$(ros2 launch sorting_arm_bringup sim.launch.xml --show-args)"
+    launch_arguments="$(ros2 launch sorting_arm_bringup app.launch.xml --show-args)"
     grep -A2 "gui" <<< "${launch_arguments}" \
       | grep -q "default:.*true"
 

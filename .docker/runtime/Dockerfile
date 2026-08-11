@@ -226,7 +226,7 @@ WORKDIR /sorting_arm_ws
 USER ubuntu
 
 ENTRYPOINT ["/usr/local/bin/sorting-arm-entrypoint"]
-CMD ["ros2", "launch", "sorting_arm_bringup", "sim.launch.xml", "gui:=false"]
+CMD ["ros2", "launch", "sorting_arm_bringup", "app.launch.xml", "gui:=false", "show_viewer:=false"]
 
 FROM runtime-headless AS smoke
 
@@ -243,8 +243,13 @@ COPY --chown=root:root --chmod=0444 \
   .docker/runtime/smoke/test_headless.py \
   /opt/sorting_arm_smoke/test_headless.py
 
+COPY --chown=root:root --chmod=0444 \
+  .docker/runtime/smoke/test_full_cycle.py \
+  /opt/sorting_arm_smoke/test_full_cycle.py
+
 RUN test "$(stat -c %a /opt/sorting_arm_smoke)" = "755" \
- && test "$(stat -c %a /opt/sorting_arm_smoke/test_headless.py)" = "444"
+ && test "$(stat -c %a /opt/sorting_arm_smoke/test_headless.py)" = "444" \
+ && test "$(stat -c %a /opt/sorting_arm_smoke/test_full_cycle.py)" = "444"
 
 USER ubuntu
 

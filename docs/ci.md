@@ -18,8 +18,9 @@ not just complete enough for a machine that already has everything installed.
 |---|---|---|
 | Build and test | `test` (`ci.yml`) | A clean `colcon build` from manifest-declared dependencies alone, then `colcon test --return-code-on-test-failure` |
 | Runtime dependency check | `runtime-deps-check` (`ci.yml`) | `rosdep check` for exec dependencies against the headless package set: nothing the runtime image needs is undeclared |
-| Runtime image build | `runtime-headless` (`ci.yml`) | The image runs as non-root, carries the current commit's test-pass marker, and contains no compiler, `colcon`, `rosdep`, `sudo`, or GUI package |
+| Runtime image build | `runtime-headless` (`ci.yml`) | The image runs as non-root, carries the current commit's test-pass marker, contains no compiler, `colcon`, `rosdep`, `sudo`, or GUI package, and defaults to headless `app.launch.xml` |
 | Headless smoke test | `smoke` (`ci.yml`) | `app.launch.xml gui:=false show_viewer:=false` starts the platform and application: clock, joint states, active controllers, MoveIt's action, the five application endpoints, and camera image and calibration topics, bounded at 300 seconds |
+| Full sorting cycle | `full-cycle` (`ci.yml`) | On a manual run or weekly schedule only, runs one complete sorting cycle and checks the executive's terminal success output has `completed == total`; failure uploads its log and does not block CI |
 
 **Build and test.** `.docker/runtime/Dockerfile`'s `test` stage runs
 `colcon build --cmake-args -DBUILD_TESTING=ON`, then `colcon test` with
@@ -55,6 +56,13 @@ timeout; the outer `timeout` bounds the whole run at 300 seconds. Error output i
 evaluated only through application readiness, before the executive begins its sorting
 cycle.
 
+**Full sorting cycle.** The non-blocking `full-cycle` job is intentionally separate
+from the push gate. It runs only for `workflow_dispatch` and the weekly schedule,
+uses the same smoke image, and waits up to 15 minutes for the executive's terminal
+success output. It asserts that completed jobs equal total jobs. Planning and Gazebo
+contact behaviour are nondeterministic on shared runners, so a failure uploads its
+full log for investigation but does not make the workflow a required verdict.
+
 ## When CI runs
 
 Pushes run CI only on `main`; pull requests run it for their proposed changes. Both
@@ -62,7 +70,8 @@ events use the same allowlist: `src/**` except Markdown files, `.docker/runtime/
 and `.github/workflows/**`. Documentation-only changes therefore create no run. A
 workflow-level concurrency group cancels an older run for the same ref when a newer
 commit arrives. A branch with an open pull request receives one CI run from the pull
-request event, not an additional push run.
+request event, not an additional push run. The weekly schedule is the exception: it
+also starts the regular job and the non-blocking full-cycle job.
 
 ## The manifest-omission trap
 
