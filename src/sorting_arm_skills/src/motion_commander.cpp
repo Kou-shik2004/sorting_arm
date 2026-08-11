@@ -1,12 +1,10 @@
 #include "sorting_arm_skills/motion_commander.hpp"
 
 #include <cmath>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "moveit/robot_model/joint_model_group.hpp"
 #include "moveit/robot_state/conversions.hpp"
 #include "moveit/robot_state/robot_state.hpp"
 #include "moveit/robot_trajectory/robot_trajectory.hpp"
@@ -42,31 +40,6 @@ MotionCommander::MotionCommander(rclcpp::Node::SharedPtr node) : node_(std::move
   arm_.setNumPlanningAttempts(static_cast<unsigned int>(planning_attempts_));
   arm_.setMaxVelocityScalingFactor(velocity_scaling_);
   arm_.setMaxAccelerationScalingFactor(acceleration_scaling_);
-
-  require_arm_joint_limits();
-}
-
-void MotionCommander::require_arm_joint_limits() {
-  const auto* group = arm_.getRobotModel()->getJointModelGroup("arm");
-  const auto& joints = group->getActiveJointModels();
-  const auto& bounds = group->getActiveJointModelsBounds();
-  if (joints.empty()) {
-    throw std::runtime_error("configured arm group has no active joints");
-  }
-
-  for (std::size_t joint_index = 0; joint_index < joints.size(); ++joint_index) {
-    const auto& joint_name = joints[joint_index]->getName();
-    for (const auto& variable_bounds : *bounds[joint_index]) {
-      if (!variable_bounds.velocity_bounded_ || !std::isfinite(variable_bounds.max_velocity_) ||
-          variable_bounds.max_velocity_ <= 0.0) {
-        throw std::runtime_error("missing positive velocity limit for joint '" + joint_name + "'");
-      }
-      if (!variable_bounds.acceleration_bounded_ || !std::isfinite(variable_bounds.max_acceleration_) ||
-          variable_bounds.max_acceleration_ <= 0.0) {
-        throw std::runtime_error("missing positive acceleration limit for joint '" + joint_name + "'");
-      }
-    }
-  }
 }
 
 SkillResult MotionCommander::move_to_named(const std::string& target_name) {

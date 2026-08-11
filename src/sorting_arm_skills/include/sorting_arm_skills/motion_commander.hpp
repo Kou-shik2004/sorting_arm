@@ -45,10 +45,6 @@ class MotionCommander {
   SkillResult execute_prepared_cartesian(const PreparedCartesianMotion& prepared);
 
  private:
-  // arm_.getRobotModel() only carries joint_limits.yaml's overrides if this node was
-  // launched with robot_description_planning params — fail startup loud if it wasn't.
-  void require_arm_joint_limits();
-
   // computeCartesianPath from start_state to target, then TOTG retime — the one
   // path both move_cartesian_to and plan_cartesian_from need, so it lives once.
   SkillResult compute_retimed_cartesian(const moveit::core::RobotState& start_state,

@@ -47,6 +47,7 @@ target_include_directories(sorting_arm_skills PUBLIC
 # moveit_ros_planning_interface is PUBLIC too — MoveGroupInterface/
 # PlanningSceneInterface are included straight in motion_commander.hpp and
 # scene_manager.hpp now, no forward-declaration pimpl hiding them anymore.
+
 ament_target_dependencies(sorting_arm_skills PUBLIC
   rclcpp
   rclcpp_action

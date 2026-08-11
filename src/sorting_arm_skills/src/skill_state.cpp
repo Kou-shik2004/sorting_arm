@@ -25,7 +25,7 @@ std::optional<std::string> SkillState::attached_object() const {
 
 void SkillState::set_attached_object(std::optional<std::string> object_id) {
   std::lock_guard<std::mutex> lock(mutex_);
-  attached_object_id_ = std::move(object_id);
+  attached_object_id_ = std::move(object_id); 
 }
 
 std::optional<std::unique_lock<std::mutex>> SkillState::lock_if_idle() {
