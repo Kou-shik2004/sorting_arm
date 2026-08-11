@@ -1,31 +1,25 @@
 #include "sorting_arm_skills/motion_commander.hpp"
 
-#include <chrono>
 #include <cmath>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "moveit/robot_model/joint_model_group.hpp"
 #include "moveit/robot_state/conversions.hpp"
 #include "moveit/robot_state/robot_state.hpp"
 #include "moveit/robot_trajectory/robot_trajectory.hpp"
 #include "moveit/trajectory_processing/time_optimal_trajectory_generation.hpp"
 #include "moveit_msgs/msg/move_it_error_codes.hpp"
 #include "moveit_msgs/msg/robot_trajectory.hpp"
-#include "rclcpp/parameter_client.hpp"
 #include "sorting_arm_skills/helpers.hpp"
 
 namespace sorting_arm {
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 
-static std::string limit_parameter(const std::string& joint_name, const std::string& field) {
-  return "robot_description_planning.joint_limits." + joint_name + "." + field;
-}
-
 MotionCommander::MotionCommander(rclcpp::Node::SharedPtr node) : node_(std::move(node)), arm_(node_, "arm") {
-  parameter_service_timeout_s_ = node_->declare_parameter<double>("planning.parameter_service_timeout_s", 5.0);
   planning_time_s_ = node_->declare_parameter<double>("planning.planning_time_s", 5.0);
   planning_attempts_ = node_->declare_parameter<int>("planning.planning_attempts", 5);
   velocity_scaling_ = node_->declare_parameter<double>("planning.velocity_scaling", 0.15);
@@ -35,7 +29,6 @@ MotionCommander::MotionCommander(rclcpp::Node::SharedPtr node) : node_(std::move
   min_fraction_ = node_->declare_parameter<double>("cartesian.min_fraction", 0.99);
   max_segment_duration_s_ = node_->declare_parameter<double>("cartesian.max_segment_duration_s", 15.0);
 
-  require_positive_parameter("planning.parameter_service_timeout_s", parameter_service_timeout_s_);
   require_positive_parameter("planning.planning_time_s", planning_time_s_);
   require_positive_parameter("planning.planning_attempts", planning_attempts_);
   require_unit_interval_parameter("planning.velocity_scaling", velocity_scaling_);
@@ -43,60 +36,35 @@ MotionCommander::MotionCommander(rclcpp::Node::SharedPtr node) : node_(std::move
   require_positive_parameter("cartesian.eef_step_m", eef_step_m_);
   require_unit_interval_parameter("cartesian.min_fraction", min_fraction_);
   require_positive_parameter("cartesian.max_segment_duration_s", max_segment_duration_s_);
+
   arm_.setPoseReferenceFrame("world");
   arm_.setPlanningTime(planning_time_s_);
   arm_.setNumPlanningAttempts(static_cast<unsigned int>(planning_attempts_));
   arm_.setMaxVelocityScalingFactor(velocity_scaling_);
   arm_.setMaxAccelerationScalingFactor(acceleration_scaling_);
 
-  load_trajectory_limits();
+  require_arm_joint_limits();
 }
 
-void MotionCommander::load_trajectory_limits() {
-  // SyncParametersClient only takes wall-clock durations and spins its own private
-  // executor before ours ever starts - cant give it sim time without forking rclcpp itself
-  auto parameter_client = std::make_shared<rclcpp::SyncParametersClient>(node_, "/move_group");
-  const auto timeout = std::chrono::duration<double>(parameter_service_timeout_s_);
-  if (!parameter_client->wait_for_service(timeout)) {
-    throw std::runtime_error("joint-limit parameter service unavailable on '/move_group'");
-  }
-
-  const auto joint_names = arm_.getActiveJoints();
-  if (joint_names.empty()) {
+void MotionCommander::require_arm_joint_limits() {
+  const auto* group = arm_.getRobotModel()->getJointModelGroup("arm");
+  const auto& joints = group->getActiveJointModels();
+  const auto& bounds = group->getActiveJointModelsBounds();
+  if (joints.empty()) {
     throw std::runtime_error("configured arm group has no active joints");
   }
 
-  std::vector<std::string> parameter_names;
-  for (const auto& joint_name : joint_names) {
-    parameter_names.push_back(limit_parameter(joint_name, "has_velocity_limits"));
-    parameter_names.push_back(limit_parameter(joint_name, "max_velocity"));
-    parameter_names.push_back(limit_parameter(joint_name, "has_acceleration_limits"));
-    parameter_names.push_back(limit_parameter(joint_name, "max_acceleration"));
-  }
-
-  const auto parameters = parameter_client->get_parameters(parameter_names, timeout);
-  if (parameters.size() != parameter_names.size()) {
-    throw std::runtime_error("joint-limit parameter response had an unexpected size");
-  }
-
-  for (std::size_t joint_index = 0; joint_index < joint_names.size(); ++joint_index) {
-    const std::size_t parameter_index = joint_index * 4;
-    const auto& joint_name = joint_names[joint_index];
-    try {
-      const bool has_velocity_limits = parameters[parameter_index].as_bool();
-      const double max_velocity = parameters[parameter_index + 1].as_double();
-      const bool has_acceleration_limits = parameters[parameter_index + 2].as_bool();
-      const double max_acceleration = parameters[parameter_index + 3].as_double();
-      if (!has_velocity_limits || !std::isfinite(max_velocity) || max_velocity <= 0.0) {
+  for (std::size_t joint_index = 0; joint_index < joints.size(); ++joint_index) {
+    const auto& joint_name = joints[joint_index]->getName();
+    for (const auto& variable_bounds : *bounds[joint_index]) {
+      if (!variable_bounds.velocity_bounded_ || !std::isfinite(variable_bounds.max_velocity_) ||
+          variable_bounds.max_velocity_ <= 0.0) {
         throw std::runtime_error("missing positive velocity limit for joint '" + joint_name + "'");
       }
-      if (!has_acceleration_limits || !std::isfinite(max_acceleration) || max_acceleration <= 0.0) {
+      if (!variable_bounds.acceleration_bounded_ || !std::isfinite(variable_bounds.max_acceleration_) ||
+          variable_bounds.max_acceleration_ <= 0.0) {
         throw std::runtime_error("missing positive acceleration limit for joint '" + joint_name + "'");
       }
-      velocity_limits_.emplace(joint_name, max_velocity);
-      acceleration_limits_.emplace(joint_name, max_acceleration);
-    } catch (const rclcpp::ParameterTypeException& error) {
-      throw std::runtime_error("invalid joint-limit parameter for joint '" + joint_name + "': " + error.what());
     }
   }
 }
@@ -272,8 +240,7 @@ SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::Robot
   robot_traj.setRobotTrajectoryMsg(start_state, trajectory_msg);
 
   trajectory_processing::TimeOptimalTrajectoryGeneration totg;
-  if (!totg.computeTimeStamps(robot_traj, velocity_limits_, acceleration_limits_, velocity_scaling_,
-                              acceleration_scaling_)) {
+  if (!totg.computeTimeStamps(robot_traj, velocity_scaling_, acceleration_scaling_)) {
     return skill_error(phase, "time-optimal retiming failed");
   }
   if (!accept_segment_duration(robot_traj.getDuration())) {

@@ -3,7 +3,6 @@
 #include <array>
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "moveit/move_group_interface/move_group_interface.hpp"
@@ -46,7 +45,9 @@ class MotionCommander {
   SkillResult execute_prepared_cartesian(const PreparedCartesianMotion& prepared);
 
  private:
-  void load_trajectory_limits();
+  // arm_.getRobotModel() only carries joint_limits.yaml's overrides if this node was
+  // launched with robot_description_planning params — fail startup loud if it wasn't.
+  void require_arm_joint_limits();
 
   // computeCartesianPath from start_state to target, then TOTG retime — the one
   // path both move_cartesian_to and plan_cartesian_from need, so it lives once.
@@ -61,9 +62,6 @@ class MotionCommander {
   int planning_attempts_ = 0;
   double velocity_scaling_ = 0.0;
   double acceleration_scaling_ = 0.0;
-  double parameter_service_timeout_s_ = 0.0;
-  std::unordered_map<std::string, double> velocity_limits_;
-  std::unordered_map<std::string, double> acceleration_limits_;
 
   double eef_step_m_ = 0.0;
   double min_fraction_ = 0.0;

@@ -9,8 +9,6 @@
 /**:
   ros__parameters:
     planning:
-      # Cartesian retiming reads canonical joint limits from /move_group.
-      parameter_service_timeout_s: 5.0
       planning_time_s: 5.0
       planning_attempts: 5
       velocity_scaling: 0.15
