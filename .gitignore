@@ -18,6 +18,7 @@ log/
 
 # Local AI configuration and formatting policy.
 .claude/
+.codex/
 .*ignore
 !.gitignore
 !.dockerignore

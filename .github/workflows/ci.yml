@@ -2,7 +2,18 @@ name: Continuous integration
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '!src/**/*.md'
+      - '.docker/runtime/**'
+      - '.github/workflows/**'
   pull_request:
+    paths:
+      - 'src/**'
+      - '!src/**/*.md'
+      - '.docker/runtime/**'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       clean_image:
@@ -13,6 +24,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   workspace:
@@ -101,7 +116,7 @@ jobs:
       - name: Run the bounded headless smoke test
         run: |
           set +e
-          timeout --signal=INT --kill-after=15s 180s \
+          timeout --signal=INT --kill-after=15s 300s \
             docker run --rm --init \
               --env ROS_DOMAIN_ID=42 \
               --shm-size=512m \
@@ -110,7 +125,7 @@ jobs:
           set -e
 
           if [ "${smoke_status}" -eq 124 ]; then
-            echo "Headless smoke test exceeded 180 seconds" >&2
+            echo "Headless smoke test exceeded 300 seconds" >&2
           fi
 
           exit "${smoke_status}"

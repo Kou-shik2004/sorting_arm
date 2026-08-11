@@ -16,10 +16,10 @@ not just complete enough for a machine that already has everything installed.
 
 | Stage | Target | Proves |
 |---|---|---|
-| Build and test | `test` (`ci.yml:32`) | A clean `colcon build` from manifest-declared dependencies alone, then `colcon test --return-code-on-test-failure` |
-| Runtime dependency check | `runtime-deps-check` (`ci.yml:47`) | `rosdep check` for exec dependencies against the headless package set: nothing the runtime image needs is undeclared |
-| Runtime image build | `runtime-headless` (`ci.yml:59`) | The image runs as non-root, carries the current commit's test-pass marker, and contains no compiler, `colcon`, `rosdep`, `sudo`, or GUI package |
-| Headless smoke test | `smoke` (`ci.yml:83`) | `sim.launch.xml gui:=false` actually starts: clock, joint states, all three controllers active, MoveIt's `move_action` server up, bounded at 180 seconds |
+| Build and test | `test` (`ci.yml`) | A clean `colcon build` from manifest-declared dependencies alone, then `colcon test --return-code-on-test-failure` |
+| Runtime dependency check | `runtime-deps-check` (`ci.yml`) | `rosdep check` for exec dependencies against the headless package set: nothing the runtime image needs is undeclared |
+| Runtime image build | `runtime-headless` (`ci.yml`) | The image runs as non-root, carries the current commit's test-pass marker, and contains no compiler, `colcon`, `rosdep`, `sudo`, or GUI package |
+| Headless smoke test | `smoke` (`ci.yml`) | `app.launch.xml gui:=false show_viewer:=false` starts the platform and application: clock, joint states, active controllers, MoveIt's action, the five application endpoints, and camera image and calibration topics, bounded at 300 seconds |
 
 **Build and test.** `.docker/runtime/Dockerfile`'s `test` stage runs
 `colcon build --cmake-args -DBUILD_TESTING=ON`, then `colcon test` with
@@ -44,11 +44,25 @@ smoke test ever runs.
 
 **Headless smoke test.** The other three stages check what's *in* the image.
 [`test_headless.py`](../.docker/runtime/smoke/test_headless.py) checks what it *does*:
-it launches `sim.launch.xml gui:=false` for real and waits on concrete readiness
-conditions, a `/clock` tick, a `JointState` message, all three controllers reporting
-`active`, and MoveIt's `move_action` server answering, rather than sleeping a fixed
-number of seconds and hoping. The whole run is bounded at 180 seconds by `timeout`, so
-a hung launch fails the job instead of hanging the runner.
+it launches `app.launch.xml gui:=false show_viewer:=false` for real and waits on
+concrete readiness conditions: a `/clock` tick, a `JointState` message, all three
+controllers reporting `active`, MoveIt's `move_action` server, the home, pick, and
+place actions, the `detect_objects` and `sync_objects` services, and messages on
+`/camera/image_raw` and `/camera/camera_info`. It also verifies that the platform and
+application processes remain live. The test does not use a fixed startup sleep. Its
+180-second readiness deadline is longer than the executive's 120-second readiness
+timeout; the outer `timeout` bounds the whole run at 300 seconds. Error output is
+evaluated only through application readiness, before the executive begins its sorting
+cycle.
+
+## When CI runs
+
+Pushes run CI only on `main`; pull requests run it for their proposed changes. Both
+events use the same allowlist: `src/**` except Markdown files, `.docker/runtime/**`,
+and `.github/workflows/**`. Documentation-only changes therefore create no run. A
+workflow-level concurrency group cancels an older run for the same ref when a newer
+commit arrives. A branch with an open pull request receives one CI run from the pull
+request event, not an additional push run.
 
 ## The manifest-omission trap
 

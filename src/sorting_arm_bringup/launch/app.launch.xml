@@ -8,9 +8,10 @@
     <arg name="show_viewer" default="true" />
     <arg name="camera_update_rate" default="30" />
     <arg name="viewer_scale" default="1.0" />
+    <arg name="gui" default="true" />
 
     <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim.launch.xml">
-        <arg name="gui" value="true" />
+        <arg name="gui" value="$(var gui)" />
         <!-- we pin these instead of dropping them - includes share one launch-config
              namespace, so an undeclared camera_width:= on the CLI still leaks in otherwise -->
         <arg name="camera_width" value="1280" />
