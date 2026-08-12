@@ -1,8 +1,8 @@
 #include "sorting_arm_skills/pick_server.hpp"
 
 #include <Eigen/Geometry>
+#include <exception>
 #include <functional>
-#include <stdexcept>
 #include <utility>
 
 #include "sorting_arm_skills/helpers.hpp"
@@ -18,15 +18,6 @@ PickServerNode::PickServerNode(rclcpp::Node::SharedPtr node, MotionCommander& mo
   grasp_validation_lift_m_ = declare_or_get<double>(*node_, "targets.grasp_validation_lift_m", 0.02);
   grasp_offset_m_ = declare_or_get<double>(*node_, "targets.grasp_offset_m", -0.036);
   max_pre_grasp_candidates_ = declare_or_get<int>(*node_, "targets.max_pre_grasp_candidates", 5);
-
-  require_positive_parameter("targets.approach_height_m", approach_height_m_);
-  require_positive_parameter("targets.retreat_height_m", retreat_height_m_);
-  require_positive_parameter("targets.grasp_validation_lift_m", grasp_validation_lift_m_);
-  if (grasp_validation_lift_m_ >= retreat_height_m_) {
-    throw std::runtime_error("targets.grasp_validation_lift_m must be smaller than targets.retreat_height_m");
-  }
-  require_finite_parameter("targets.grasp_offset_m", grasp_offset_m_);
-  require_positive_parameter("targets.max_pre_grasp_candidates", max_pre_grasp_candidates_);
 
   server_ = rclcpp_action::create_server<Pick>(node_, "pick", std::bind_front(&PickServerNode::handle_goal, this),
                                                std::bind_front(&PickServerNode::handle_cancel, this),
@@ -161,11 +152,7 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
       return close_result;
     }
 
-    geometry_msgs::msg::PoseStamped tcp_before_lift;
-    const auto before_pose_result = motion_.current_tcp_pose(tcp_before_lift);
-    if (!before_pose_result.ok) {
-      return before_pose_result;
-    }
+    const auto tcp_before_lift = motion_.current_tcp_pose();
 
     if (enter_phase("validation_lift")) {
       return skill_error("validation_lift", "cancellation requested");
@@ -184,15 +171,7 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
       return probe_result;
     }
 
-    geometry_msgs::msg::PoseStamped tcp_after_lift;
-    const auto after_pose_result = motion_.current_tcp_pose(tcp_after_lift);
-    if (!after_pose_result.ok) {
-      return after_pose_result;
-    }
-    if (object_centre.header.frame_id != tcp_before_lift.header.frame_id ||
-        tcp_after_lift.header.frame_id != tcp_before_lift.header.frame_id) {
-      return skill_error("attach", "object and executed tcp poses do not share one world frame");
-    }
+    const auto tcp_after_lift = motion_.current_tcp_pose();
 
     Eigen::Isometry3d world_tcp_before;
     Eigen::Isometry3d world_tcp_after;
@@ -202,9 +181,6 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
     tf2::fromMsg(object_centre.pose, world_object_before);
     const Eigen::Isometry3d tcp_object_before = world_tcp_before.inverse() * world_object_before;
     const Eigen::Isometry3d world_object_after = world_tcp_after * tcp_object_before;
-    if (!world_object_after.matrix().allFinite()) {
-      return skill_error("attach", "executed tcp transform produced a non-finite object pose");
-    }
 
     geometry_msgs::msg::PoseStamped lifted_object_centre = object_centre;
     lifted_object_centre.pose = tf2::toMsg(world_object_after);
@@ -235,28 +211,23 @@ void PickServerNode::run(std::stop_token stop_token, std::shared_ptr<GoalHandle>
   auto result = std::make_shared<Pick::Result>();
   try {
     const auto goal = goal_handle->get_goal();
-    if (goal == nullptr) {
-      result->result = to_msg(skill_error("internal", "Pick goal handle returned no goal"));
+    const auto geometry = scene_.known_object_geometry(goal->object_id);
+    if (!geometry) {
+      result->result = to_msg(skill_error("validate", "object '" + goal->object_id + "' was never synced into the scene"));
       goal_handle->abort(result);
     } else {
-      const auto geometry = scene_.known_object_geometry(goal->object_id);
-      if (!geometry) {
-        result->result = to_msg(skill_error("validate", "object '" + goal->object_id + "' was never synced into the scene"));
-        goal_handle->abort(result);
-      } else {
-        auto feedback = std::make_shared<Pick::Feedback>();
-        const auto outcome =
-            pick(goal->object_id, geometry->centre, geometry->half_height_m, stop_token, feedback, goal_handle);
-        result->result = to_msg(outcome);
+      auto feedback = std::make_shared<Pick::Feedback>();
+      const auto outcome =
+          pick(goal->object_id, geometry->centre, geometry->half_height_m, stop_token, feedback, goal_handle);
+      result->result = to_msg(outcome);
 
-        if (goal_handle->is_canceling()) {
-          goal_handle->canceled(result);
-        } else if (outcome.ok) {
-          state_.set_attached_object(goal->object_id);
-          goal_handle->succeed(result);
-        } else {
-          goal_handle->abort(result);
-        }
+      if (goal_handle->is_canceling()) {
+        goal_handle->canceled(result);
+      } else if (outcome.ok) {
+        state_.set_attached_object(goal->object_id);
+        goal_handle->succeed(result);
+      } else {
+        goal_handle->abort(result);
       }
     }
   } catch (const std::exception& error) {

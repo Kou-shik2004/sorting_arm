@@ -1,8 +1,6 @@
 #include "sorting_arm_skills/helpers.hpp"
 
 #include <cmath>
-#include <stdexcept>
-#include <string>
 
 namespace sorting_arm {
 
@@ -15,49 +13,12 @@ sorting_arm_interfaces::msg::SkillResult to_msg(const SkillResult& result) {
   return msg;
 }
 
-void require_positive_parameter(std::string_view name, double value) {
-  if (!std::isfinite(value) || value <= 0.0) {
-    throw std::runtime_error(std::string(name) + " must be positive and finite");
-  }
-}
-
-void require_positive_parameter(std::string_view name, int value) {
-  if (value <= 0) {
-    throw std::runtime_error(std::string(name) + " must be positive");
-  }
-}
-
-void require_unit_interval_parameter(std::string_view name, double value) {
-  if (!std::isfinite(value) || value <= 0.0 || value > 1.0) {
-    throw std::runtime_error(std::string(name) + " must be in (0, 1]");
-  }
-}
-
-void require_finite_parameter(std::string_view name, double value) {
-  if (!std::isfinite(value)) {
-    throw std::runtime_error(std::string(name) + " must be finite");
-  }
-}
-
-static bool finite_pose(const geometry_msgs::msg::Pose& pose) {
-  return std::isfinite(pose.position.x) && std::isfinite(pose.position.y) && std::isfinite(pose.position.z) &&
-         std::isfinite(pose.orientation.x) && std::isfinite(pose.orientation.y) && std::isfinite(pose.orientation.z) &&
-         std::isfinite(pose.orientation.w);
-}
-
 // `base` offset by delta_z along world Z — every grasp/pre-grasp/place/
 // pre-place/retreat pose is one of these.
 static geometry_msgs::msg::PoseStamped offset_z(const geometry_msgs::msg::PoseStamped& base, double delta_z) {
   geometry_msgs::msg::PoseStamped out = base;
   out.pose.position.z += delta_z;
   return out;
-}
-
-bool validate_pose(const geometry_msgs::msg::PoseStamped& pose, std::string_view expected_frame) {
-  if (pose.header.frame_id != expected_frame) {
-    return false;
-  }
-  return finite_pose(pose.pose);
 }
 
 geometry_msgs::msg::Quaternion top_down_orientation(double yaw_rad) {

@@ -1,12 +1,10 @@
 #include "sorting_arm_skills/scene_manager.hpp"
 
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <future>
 #include <memory>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,7 +15,6 @@
 #include "moveit_msgs/msg/planning_scene.hpp"
 #include "moveit_msgs/msg/planning_scene_components.hpp"
 #include "shape_msgs/msg/solid_primitive.hpp"
-#include "sorting_arm_skills/helpers.hpp"
 
 namespace sorting_arm {
 
@@ -36,15 +33,7 @@ moveit_msgs::msg::CollisionObject SceneManager::load_box_set(const std::string& 
   const auto centre_y = node_->declare_parameter<std::vector<double>>(prefix + ".box_centre_y", no_boxes);
   const auto centre_z = node_->declare_parameter<std::vector<double>>(prefix + ".box_centre_z", no_boxes);
 
-  if (id.empty()) {
-    throw std::runtime_error(prefix + ".id must be non-empty");
-  }
   const std::size_t n = size_x.size();
-  const bool consistent = n > 0 && size_y.size() == n && size_z.size() == n && centre_x.size() == n &&
-                          centre_y.size() == n && centre_z.size() == n;
-  if (!consistent) {
-    throw std::runtime_error(prefix + ": box_size_*/box_centre_* arrays must all be the same, non-zero length");
-  }
 
   moveit_msgs::msg::CollisionObject object;
   object.header.frame_id = "world";
@@ -52,12 +41,6 @@ moveit_msgs::msg::CollisionObject SceneManager::load_box_set(const std::string& 
   object.operation = moveit_msgs::msg::CollisionObject::ADD;
 
   for (std::size_t i = 0; i < n; ++i) {
-    if (!std::isfinite(size_x[i]) || !std::isfinite(size_y[i]) || !std::isfinite(size_z[i]) || size_x[i] <= 0.0 ||
-        size_y[i] <= 0.0 || size_z[i] <= 0.0 || !std::isfinite(centre_x[i]) || !std::isfinite(centre_y[i]) ||
-        !std::isfinite(centre_z[i])) {
-      throw std::runtime_error(prefix + ": every box needs finite centres and positive finite dimensions");
-    }
-
     shape_msgs::msg::SolidPrimitive primitive;
     primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
     primitive.dimensions = {size_x[i], size_y[i], size_z[i]};
@@ -74,7 +57,6 @@ moveit_msgs::msg::CollisionObject SceneManager::load_box_set(const std::string& 
 
 SceneManager::SceneManager(rclcpp::Node::SharedPtr node) : node_(std::move(node)) {
   service_timeout_s_ = node_->declare_parameter<double>("scene.service_timeout_s", 5.0);
-  require_positive_parameter("scene.service_timeout_s", service_timeout_s_);
 
   static_objects_.push_back(load_box_set("scene.table"));
   static_objects_.push_back(load_box_set("scene.red_tray"));
@@ -104,36 +86,20 @@ SkillResult SceneManager::query_allowed_collision_matrix(moveit_msgs::msg::Allow
   return skill_ok("grasp_contacts");
 }
 
-SkillResult SceneManager::apply_and_verify_allowed_collision_matrix(const moveit_msgs::msg::AllowedCollisionMatrix& matrix,
-                                                                    const std::string& operation) {
+SkillResult SceneManager::apply_allowed_collision_matrix(const moveit_msgs::msg::AllowedCollisionMatrix& matrix,
+                                                         const std::string& operation) {
   moveit_msgs::msg::PlanningScene scene;
   scene.is_diff = true;
   scene.allowed_collision_matrix = matrix;
   if (!scene_interface_.applyPlanningScene(scene)) {
     return skill_error("grasp_contacts", operation + ": applyPlanningScene failed");
   }
-
-  moveit_msgs::msg::AllowedCollisionMatrix observed;
-  const auto query_result = query_allowed_collision_matrix(observed);
-  if (!query_result.ok) {
-    return skill_error("grasp_contacts", operation + ": " + query_result.message, query_result.native_code);
-  }
-  if (observed != matrix) {
-    return skill_error("grasp_contacts", operation + ": allowed collision matrix verification failed");
-  }
   return skill_ok("grasp_contacts");
 }
 
 SkillResult SceneManager::begin_grasp_contacts(const std::string& object_id) {
-  if (grasp_contacts_baseline_ || grasp_contacts_object_id_) {
+  if (grasp_contacts_baseline_) {
     return skill_error("grasp_contacts", "a grasp-contact allowance is already active");
-  }
-  if (known_dynamic_objects_.find(object_id) == known_dynamic_objects_.end()) {
-    return skill_error("grasp_contacts", "object '" + object_id + "' was never synced into the scene");
-  }
-  if (scene_interface_.getObjects({object_id}).count(object_id) != 1 ||
-      scene_interface_.getAttachedObjects({object_id}).count(object_id) != 0) {
-    return skill_error("grasp_contacts", "object '" + object_id + "' is not world-present/attached-absent");
   }
 
   moveit_msgs::msg::AllowedCollisionMatrix baseline;
@@ -147,33 +113,22 @@ SkillResult SceneManager::begin_grasp_contacts(const std::string& object_id) {
   moveit_msgs::msg::AllowedCollisionMatrix modified_msg;
   modified.getMessage(modified_msg);
 
-  const auto apply_result = apply_and_verify_allowed_collision_matrix(modified_msg, "enable grasp contacts");
+  const auto apply_result = apply_allowed_collision_matrix(modified_msg, "enable grasp contacts");
   if (!apply_result.ok) {
-    const auto restore_result = apply_and_verify_allowed_collision_matrix(baseline, "rollback grasp contacts");
-    if (!restore_result.ok) {
-      return skill_error("grasp_contacts", apply_result.message + "; rollback failed: " + restore_result.message,
-                         restore_result.native_code);
-    }
     return apply_result;
   }
 
   grasp_contacts_baseline_ = std::move(baseline);
-  grasp_contacts_object_id_ = object_id;
   return skill_ok("grasp_contacts");
 }
 
 SkillResult SceneManager::end_grasp_contacts() {
-  if (!grasp_contacts_baseline_ || !grasp_contacts_object_id_) {
-    return skill_error("grasp_contacts", "no grasp-contact allowance is active");
-  }
-
-  const auto restore_result = apply_and_verify_allowed_collision_matrix(*grasp_contacts_baseline_, "restore grasp contacts");
+  const auto restore_result = apply_allowed_collision_matrix(*grasp_contacts_baseline_, "restore grasp contacts");
   if (!restore_result.ok) {
     return restore_result;
   }
 
   grasp_contacts_baseline_.reset();
-  grasp_contacts_object_id_.reset();
   return skill_ok("grasp_contacts");
 }
 
@@ -182,38 +137,12 @@ SkillResult SceneManager::apply_static_scene() {
     return skill_error("scene_apply", "applyCollisionObjects failed for the static table/tray scene");
   }
 
-  std::vector<std::string> ids;
-  for (const auto& object : static_objects_) {
-    ids.push_back(object.id);
-  }
-  const auto known = scene_interface_.getObjects(ids);
-  if (known.size() != ids.size()) {
-    return skill_error("scene_apply", "static scene objects missing from a getObjects query after apply");
-  }
   return skill_ok("scene_apply");
 }
 
 SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces::msg::DetectedObject>& objects) {
   std::map<std::string, moveit_msgs::msg::CollisionObject> new_objects;
   for (const auto& detected : objects) {
-    if (detected.id.empty()) {
-      return skill_error("scene_apply", "a detected object has an empty id");
-    }
-    if (!validate_pose(detected.centre, "world")) {
-      return skill_error("scene_apply", "object '" + detected.id + "' centre pose failed frame/finite validation");
-    }
-    if (detected.primitive_type != shape_msgs::msg::SolidPrimitive::BOX) {
-      return skill_error("scene_apply", "object '" + detected.id + "' is not a box primitive");
-    }
-    if (detected.dimensions.size() != 3) {
-      return skill_error("scene_apply", "object '" + detected.id + "' must have exactly 3 box dimensions");
-    }
-    for (std::size_t index = 0; index < detected.dimensions.size(); ++index) {
-      if (!std::isfinite(detected.dimensions[index]) || detected.dimensions[index] <= 0.0) {
-        return skill_error("scene_apply", "object '" + detected.id + "' has a non-positive or non-finite dimension");
-      }
-    }
-
     moveit_msgs::msg::CollisionObject collision_object;
     collision_object.header.frame_id = "world";
     collision_object.id = detected.id;
@@ -225,10 +154,7 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
     collision_object.primitives.push_back(primitive);
     collision_object.primitive_poses.push_back(detected.centre.pose);
 
-    const auto insert_result = new_objects.emplace(detected.id, collision_object);
-    if (!insert_result.second) {
-      return skill_error("scene_apply", "object id '" + detected.id + "' appears more than once");
-    }
+    new_objects.emplace(detected.id, collision_object);
   }
 
   std::vector<moveit_msgs::msg::CollisionObject> to_apply;
@@ -236,7 +162,6 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
     to_apply.push_back(entry.second);
   }
 
-  std::vector<std::string> stale_ids;
   for (const auto& entry : known_dynamic_objects_) {
     if (new_objects.find(entry.first) == new_objects.end()) {
       moveit_msgs::msg::CollisionObject remove_object;
@@ -244,25 +169,11 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
       remove_object.id = entry.first;
       remove_object.operation = moveit_msgs::msg::CollisionObject::REMOVE;
       to_apply.push_back(remove_object);
-      stale_ids.push_back(entry.first);
     }
   }
 
   if (!to_apply.empty() && !scene_interface_.applyCollisionObjects(to_apply)) {
     return skill_error("scene_apply", "applyCollisionObjects failed while syncing detected objects");
-  }
-
-  std::vector<std::string> expected_ids;
-  for (const auto& entry : new_objects) {
-    expected_ids.push_back(entry.first);
-  }
-  const auto present = scene_interface_.getObjects(expected_ids);
-  if (present.size() != new_objects.size()) {
-    return skill_error("scene_apply", "not every synced object was present in a getObjects query after apply");
-  }
-  // getObjects({}) means all world objects, so an empty stale set needs no query
-  if (!stale_ids.empty() && !scene_interface_.getObjects(stale_ids).empty()) {
-    return skill_error("scene_apply", "a stale object remained in the scene after synchronization");
   }
 
   known_dynamic_objects_ = std::move(new_objects);
@@ -271,18 +182,7 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
 
 SkillResult SceneManager::attach_at_pose(const std::string& object_id,
                                          const geometry_msgs::msg::PoseStamped& object_centre) {
-  const auto it = known_dynamic_objects_.find(object_id);
-  if (it == known_dynamic_objects_.end()) {
-    return skill_error("attach", "object '" + object_id + "' was never synced into the scene");
-  }
-  if (!validate_pose(object_centre, "world")) {
-    return skill_error("attach", "object centre pose failed frame/finite validation");
-  }
-  if (it->second.primitive_poses.size() != 1) {
-    return skill_error("attach", "object '" + object_id + "' does not have exactly one primitive pose");
-  }
-
-  moveit_msgs::msg::CollisionObject object = it->second;
+  moveit_msgs::msg::CollisionObject object = known_dynamic_objects_.at(object_id);
   object.header.frame_id = "world";
   object.primitive_poses.front() = object_centre.pose;
 
@@ -296,25 +196,12 @@ SkillResult SceneManager::attach_at_pose(const std::string& object_id,
     return skill_error("attach", "applyAttachedCollisionObject failed for '" + object_id + "'");
   }
 
-  const auto attached_now = scene_interface_.getAttachedObjects({object_id});
-  const auto world_now = scene_interface_.getObjects({object_id});
-  if (attached_now.count(object_id) != 1 || world_now.count(object_id) != 0) {
-    return skill_error("attach", "attach did not produce attached-present/world-absent for '" + object_id + "'");
-  }
   known_dynamic_objects_[object_id] = std::move(object);
   return skill_ok("attach");
 }
 
 SkillResult SceneManager::detach_and_place(const std::string& object_id,
                                            const geometry_msgs::msg::PoseStamped& placed_centre) {
-  const auto it = known_dynamic_objects_.find(object_id);
-  if (it == known_dynamic_objects_.end()) {
-    return skill_error("detach_reinsert", "object '" + object_id + "' has no known geometry to reinsert");
-  }
-  if (!validate_pose(placed_centre, "world")) {
-    return skill_error("detach_reinsert", "placed centre pose failed frame/finite validation");
-  }
-
   moveit_msgs::msg::AttachedCollisionObject detach_msg;
   detach_msg.link_name = "tcp";
   detach_msg.object.id = object_id;
@@ -324,22 +211,12 @@ SkillResult SceneManager::detach_and_place(const std::string& object_id,
     return skill_error("detach_reinsert", "detaching '" + object_id + "' failed");
   }
 
-  moveit_msgs::msg::CollisionObject reinsert = it->second;
+  moveit_msgs::msg::CollisionObject reinsert = known_dynamic_objects_.at(object_id);
   reinsert.header.frame_id = "world";
   reinsert.operation = moveit_msgs::msg::CollisionObject::ADD;
-  // every dynamic object synced through sync_objects has exactly one primitive
-  if (!reinsert.primitive_poses.empty()) {
-    reinsert.primitive_poses[0] = placed_centre.pose;
-  }
+  reinsert.primitive_poses.front() = placed_centre.pose;
   if (!scene_interface_.applyCollisionObject(reinsert)) {
     return skill_error("detach_reinsert", "reinserting '" + object_id + "' failed");
-  }
-
-  const auto attached_now = scene_interface_.getAttachedObjects({object_id});
-  const auto world_now = scene_interface_.getObjects({object_id});
-  if (attached_now.count(object_id) != 0 || world_now.count(object_id) != 1) {
-    return skill_error("detach_reinsert",
-                       "detach/reinsert did not produce world-present/attached-absent for '" + object_id + "'");
   }
 
   known_dynamic_objects_[object_id] = std::move(reinsert);
@@ -352,14 +229,7 @@ std::optional<SceneManager::ObjectGeometry> SceneManager::known_object_geometry(
     return std::nullopt;
   }
   const auto& object = it->second;
-  if (object.primitives.size() != 1 || object.primitive_poses.size() != 1) {
-    return std::nullopt;
-  }
   const auto& primitive = object.primitives.front();
-  if (primitive.type != shape_msgs::msg::SolidPrimitive::BOX ||
-      primitive.dimensions.size() <= shape_msgs::msg::SolidPrimitive::BOX_Z) {
-    return std::nullopt;
-  }
 
   ObjectGeometry geometry;
   geometry.centre.header.frame_id = object.header.frame_id;

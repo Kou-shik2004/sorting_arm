@@ -5,12 +5,10 @@
 #include <cmath>
 #include <cstddef>
 #include <future>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
 #include "rclcpp_action/create_client.hpp"
-#include "sorting_arm_skills/helpers.hpp"
 
 namespace sorting_arm {
 
@@ -32,14 +30,6 @@ GripperCommander::GripperCommander(rclcpp::Node::SharedPtr node) : node_(std::mo
   goal_timeout_s_ = node_->declare_parameter<double>("gripper.goal_timeout_s", 5.0);
   result_timeout_s_ = node_->declare_parameter<double>("gripper.result_timeout_s", 10.0);
   close_step_rad_ = node_->declare_parameter<double>("gripper.close_step_rad", 0.03);
-
-  require_positive_parameter("gripper.goal_timeout_s", goal_timeout_s_);
-  require_positive_parameter("gripper.result_timeout_s", result_timeout_s_);
-  require_positive_parameter("gripper.close_step_rad", close_step_rad_);
-  if (close_step_rad_ <= kGoalTolerance || close_step_rad_ >= kClosePosition - kOpenPosition) {
-    throw std::runtime_error(
-        "gripper.close_step_rad must be greater than the 0.01 rad goal tolerance and smaller than the joint range");
-  }
 
   client_ = rclcpp_action::create_client<GripperCommandAction>(node_, "/gripper_controller/gripper_cmd");
 }
@@ -135,9 +125,6 @@ SkillResult GripperCommander::hold_position(double position, const std::string& 
 
 SkillResult GripperCommander::close() {
   held_position_.reset();
-  if (!measured_position_) {
-    return skill_error("close_gripper", "close requires a successful open result first");
-  }
 
   const double minimum_progress = close_step_rad_ - kGoalTolerance;
   const auto max_steps = static_cast<std::size_t>(std::ceil((kClosePosition - kOpenPosition) / minimum_progress)) + 1;
@@ -207,10 +194,6 @@ SkillResult GripperCommander::close() {
 }
 
 SkillResult GripperCommander::probe_grasp_retention() {
-  if (!held_position_) {
-    return skill_error("probe_grasp_retention", "retention probe requires a held obstruction candidate");
-  }
-
   const double probe_target = std::min(*held_position_ + close_step_rad_, kClosePosition);
   if (probe_target - *held_position_ <= kGoalTolerance) {
     return skill_error("probe_grasp_retention", "held position is too close to the joint limit for a distinguishable probe");

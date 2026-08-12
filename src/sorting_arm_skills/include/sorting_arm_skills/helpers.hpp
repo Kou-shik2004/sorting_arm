@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <string_view>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "rclcpp/node.hpp"
@@ -15,13 +14,6 @@ namespace sorting_arm {
 // SkillResult -> the wire shape embedded in every Pick/Place/Home result.
 sorting_arm_interfaces::msg::SkillResult to_msg(const SkillResult& result);
 
-// Parameter checks shared by constructors. Invalid startup configuration is
-// rejected instead of silently clamped to a different motion setting.
-void require_positive_parameter(std::string_view name, double value);
-void require_positive_parameter(std::string_view name, int value);
-void require_unit_interval_parameter(std::string_view name, double value);
-void require_finite_parameter(std::string_view name, double value);
-
 // Declares `name` with `fallback` the first time it's asked for on `node`,
 // returns the already-declared value every time after. Lets two servers on
 // the same node share targets.* without a second declare_parameter throwing
@@ -33,10 +25,6 @@ T declare_or_get(rclcpp::Node& node, const std::string& name, const T& fallback)
   }
   return node.declare_parameter<T>(name, fallback);
 }
-
-// True only if pose.header.frame_id equals expected_frame exactly and every
-// position/orientation component is finite.
-[[nodiscard]] bool validate_pose(const geometry_msgs::msg::PoseStamped& pose, std::string_view expected_frame);
 
 // The only tool orientation grasp/pre-grasp/place/pre-place poses use — see
 // docs/skills/pose_helpers.md for the closed-form derivation.

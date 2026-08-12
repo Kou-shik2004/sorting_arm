@@ -1,10 +1,9 @@
 #include <chrono>
+#include <exception>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
-#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/create_client.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -119,17 +118,6 @@ class SequenceDemo {
     stop_on_failure_ = node_->declare_parameter<bool>("stop_on_failure", true);
 
     const std::size_t n = ids.size();
-    const bool consistent = n > 0 && labels.size() == n && centre_x.size() == n && centre_y.size() == n &&
-                            centre_z.size() == n && size_x.size() == n && size_y.size() == n && size_z.size() == n &&
-                            dest_x.size() == n && dest_y.size() == n && dest_z.size() == n;
-    if (!consistent) {
-      throw std::runtime_error(
-          "objects/object_label/object_centre_*/object_size_*/destination_* must all be the same, non-zero length");
-    }
-    if (result_timeout_s_ <= 0.0) {
-      throw std::runtime_error("result_timeout_s must be positive");
-    }
-
     for (std::size_t i = 0; i < n; ++i) {
       objects_.push_back(ObjectSpec{ids[i], labels[i], centre_x[i], centre_y[i], centre_z[i], size_x[i], size_y[i],
                                     size_z[i], dest_x[i], dest_y[i], dest_z[i]});

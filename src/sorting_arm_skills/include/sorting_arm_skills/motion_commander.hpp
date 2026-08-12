@@ -13,8 +13,8 @@
 
 namespace sorting_arm {
 
-// Owns the one arm MoveGroupInterface for the whole process (D6) — every motion
-// request goes validate -> set target -> plan once -> execute that same plan.
+// Owns the one arm MoveGroupInterface for the whole process (D6). Every motion
+// request sets its target, plans once, and executes that same plan.
 class MotionCommander {
  public:
   // we keep both pick plans so descent starts from the exact IK branch we
@@ -34,7 +34,7 @@ class MotionCommander {
   SkillResult move_to_joints(const std::array<double, 6>& joint_values);
   SkillResult move_to_pose(const geometry_msgs::msg::PoseStamped& target);
   SkillResult move_cartesian_to(const geometry_msgs::msg::PoseStamped& target);
-  SkillResult current_tcp_pose(geometry_msgs::msg::PoseStamped& pose) const;
+  geometry_msgs::msg::PoseStamped current_tcp_pose() const;
 
   // we split planning from execution here because Pick must reject a branch
   // whose vertical descent collides before the arm moves
@@ -45,23 +45,25 @@ class MotionCommander {
   SkillResult execute_prepared_cartesian(const PreparedCartesianMotion& prepared);
 
  private:
+  // plan() then execute() on arm_'s current target, checking each result — the
+  // one shape move_to_named, move_to_joints, and move_to_pose all share.
+  SkillResult plan_and_execute(const std::string& phase, const std::string& plan_fail_message,
+                               const std::string& exec_fail_message);
+
   // computeCartesianPath from start_state to target, then TOTG retime — the one
   // path both move_cartesian_to and plan_cartesian_from need, so it lives once.
   SkillResult compute_retimed_cartesian(const moveit::core::RobotState& start_state,
                                         const geometry_msgs::msg::PoseStamped& target, const std::string& phase,
                                         moveit_msgs::msg::RobotTrajectory& trajectory_msg);
   [[nodiscard]] bool accept_cartesian_fraction(double fraction) const;
-  [[nodiscard]] bool accept_segment_duration(double duration_s) const;
 
   rclcpp::Node::SharedPtr node_;
-  double planning_time_s_ = 0.0;
   int planning_attempts_ = 0;
   double velocity_scaling_ = 0.0;
   double acceleration_scaling_ = 0.0;
 
   double eef_step_m_ = 0.0;
   double min_fraction_ = 0.0;
-  double max_segment_duration_s_ = 0.0;
 
   moveit::planning_interface::MoveGroupInterface arm_;
 };

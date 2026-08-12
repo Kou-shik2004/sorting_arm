@@ -1,6 +1,8 @@
 #include "sorting_arm_skills/place_server.hpp"
 
+#include <exception>
 #include <functional>
+#include <string>
 #include <utility>
 
 #include "sorting_arm_skills/helpers.hpp"
@@ -15,10 +17,6 @@ PlaceServerNode::PlaceServerNode(rclcpp::Node::SharedPtr node, MotionCommander& 
   approach_height_m_ = declare_or_get<double>(*node_, "targets.approach_height_m", 0.12);
   retreat_height_m_ = declare_or_get<double>(*node_, "targets.retreat_height_m", 0.12);
   grasp_offset_m_ = declare_or_get<double>(*node_, "targets.grasp_offset_m", -0.036);
-
-  require_positive_parameter("targets.approach_height_m", approach_height_m_);
-  require_positive_parameter("targets.retreat_height_m", retreat_height_m_);
-  require_finite_parameter("targets.grasp_offset_m", grasp_offset_m_);
 
   server_ = rclcpp_action::create_server<Place>(node_, "place", std::bind_front(&PlaceServerNode::handle_goal, this),
                                                 std::bind_front(&PlaceServerNode::handle_cancel, this),
@@ -104,34 +102,29 @@ void PlaceServerNode::run(std::stop_token stop_token, std::shared_ptr<GoalHandle
   auto result = std::make_shared<Place::Result>();
   try {
     const auto goal = goal_handle->get_goal();
-    if (goal == nullptr) {
-      result->result = to_msg(skill_error("internal", "Place goal handle returned no goal"));
+    const auto attached = state_.attached_object();
+    if (!attached || *attached != goal->object_id) {
+      result->result =
+          to_msg(skill_error("validate", "object '" + goal->object_id + "' is not the currently attached object"));
       goal_handle->abort(result);
     } else {
-      const auto attached = state_.attached_object();
-      if (!attached || *attached != goal->object_id) {
-        result->result =
-            to_msg(skill_error("validate", "object '" + goal->object_id + "' is not the currently attached object"));
+      const auto geometry = scene_.known_object_geometry(goal->object_id);
+      if (!geometry) {
+        result->result = to_msg(skill_error("validate", "object '" + goal->object_id + "' has no synced geometry"));
         goal_handle->abort(result);
       } else {
-        const auto geometry = scene_.known_object_geometry(goal->object_id);
-        if (!geometry) {
-          result->result = to_msg(skill_error("validate", "object '" + goal->object_id + "' has no synced geometry"));
-          goal_handle->abort(result);
-        } else {
-          auto feedback = std::make_shared<Place::Feedback>();
-          const auto outcome =
-              place(goal->object_id, goal->destination, geometry->half_height_m, stop_token, feedback, goal_handle);
-          result->result = to_msg(outcome);
+        auto feedback = std::make_shared<Place::Feedback>();
+        const auto outcome =
+            place(goal->object_id, goal->destination, geometry->half_height_m, stop_token, feedback, goal_handle);
+        result->result = to_msg(outcome);
 
-          if (goal_handle->is_canceling()) {
-            goal_handle->canceled(result);
-          } else if (outcome.ok) {
-            state_.set_attached_object(std::nullopt);
-            goal_handle->succeed(result);
-          } else {
-            goal_handle->abort(result);
-          }
+        if (goal_handle->is_canceling()) {
+          goal_handle->canceled(result);
+        } else if (outcome.ok) {
+          state_.set_attached_object(std::nullopt);
+          goal_handle->succeed(result);
+        } else {
+          goal_handle->abort(result);
         }
       }
     }

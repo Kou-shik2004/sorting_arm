@@ -6,20 +6,26 @@
 # sorting_arm_bringup/worlds/sorting_cell.sdf (absolute world-frame poses), not
 # re-derived at runtime, so MoveIt's collision world matches Gazebo's physics
 # world exactly. If the world file changes, these numbers must be re-measured.
+# Each box set uses non-empty, equal-length arrays; sizes are positive metres.
 /**:
   ros__parameters:
     planning:
+      # Seconds; use a positive value.
       planning_time_s: 5.0
+      # Positive whole-number attempt count.
       planning_attempts: 5
+      # MoveIt scaling factors are in (0, 1].
       velocity_scaling: 0.15
       acceleration_scaling: 0.15
 
     cartesian:
+      # Cartesian waypoint spacing in metres; use a positive value.
       eef_step_m: 0.005
+      # Required path coverage fraction in (0, 1].
       min_fraction: 0.99
-      max_segment_duration_s: 15.0
 
     scene:
+      # Seconds to wait for the planning-scene service; use a positive value.
       service_timeout_s: 5.0
       # Table top + 4 legs, absolute world-frame centres/dimensions from
       # sorting_cell.sdf's "table" model (model pose 0.35 0 0.505).
@@ -55,11 +61,13 @@
         box_centre_z: [0.5025, 0.540, 0.540, 0.540, 0.540]
 
     gripper:
+      # Seconds to wait for a goal response; use a positive value.
       goal_timeout_s: 5.0
       # real-time watchdog on gripper motion finishing, not a sim-seconds budget -
       # widened so it survives Gazebo dipping below RTF 1
       result_timeout_s: 60.0
       # we keep each position error small instead of pushing straight to 0.8
+      # use a step above 0.01 rad and below the 0.8 rad joint range
       close_step_rad: 0.03
 
     targets:
@@ -71,6 +79,7 @@
       approach_height_m: 0.12
       retreat_height_m: 0.12
       # we check the grasp after this short lift and attach only if it stays blocked
+      # keep this positive and smaller than retreat_height_m
       grasp_validation_lift_m: 0.02
       # tcp height at grasp/place = object_centre_z + half_height_m + this.
       # the pads sit almost entirely above tcp, so -0.036 is what puts the pad
