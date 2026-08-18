@@ -163,14 +163,6 @@ SkillResult PickServerNode::pick(const std::string& object_id, const geometry_ms
       return skill_error("validation_lift", lift_result.message, lift_result.native_code);
     }
 
-    if (enter_phase("probe_grasp_retention")) {
-      return skill_error("probe_grasp_retention", "cancellation requested");
-    }
-    const auto probe_result = gripper_.probe_grasp_retention();
-    if (!probe_result.ok) {
-      return probe_result;
-    }
-
     const auto tcp_after_lift = motion_.current_tcp_pose();
 
     Eigen::Isometry3d world_tcp_before;

@@ -17,7 +17,6 @@ namespace sorting_arm {
 static constexpr double kOpenPosition = 0.0;
 static constexpr double kClosePosition = 0.8;
 static constexpr double kMaxEffort = 50.0;
-static constexpr double kGoalTolerance = 0.01;
 
 static int native_code(rclcpp_action::ResultCode code) { return static_cast<int>(code); }
 
@@ -74,7 +73,6 @@ SkillResult GripperCommander::send_goal(double position, const std::string& phas
 
 SkillResult GripperCommander::open() {
   measured_position_.reset();
-  held_position_.reset();
 
   CommandOutcome outcome;
   const auto command_result = send_goal(kOpenPosition, "open_gripper", outcome);
@@ -111,8 +109,6 @@ SkillResult GripperCommander::hold_position(double position, const std::string& 
 }
 
 SkillResult GripperCommander::close() {
-  held_position_.reset();
-
   // steps monotonically toward kClosePosition, so the loop always exits: it either
   // stalls on the object or reaches full close (handled below), never runs forever.
   std::size_t step_index = 0;
@@ -147,46 +143,11 @@ SkillResult GripperCommander::close() {
       return hold_result;
     }
     measured_position_ = held_position;
-    held_position_ = held_position;
     RCLCPP_INFO(node_->get_logger(),
                 "close obstruction candidate: step=%zu target=%.6f stalled_position=%.6f hold_position=%.6f", step_index,
                 target, outcome.result.position, held_position);
     return skill_ok("close_gripper");
   }
-}
-
-SkillResult GripperCommander::probe_grasp_retention() {
-  const double probe_target = std::min(*held_position_ + close_step_rad_, kClosePosition);
-  if (probe_target - *held_position_ <= kGoalTolerance) {
-    return skill_error("probe_grasp_retention", "held position is too close to the joint limit for a distinguishable probe");
-  }
-
-  CommandOutcome outcome;
-  const auto command_result = send_goal(probe_target, "probe_grasp_retention", outcome);
-  if (!command_result.ok) {
-    return command_result;
-  }
-  if (outcome.code != rclcpp_action::ResultCode::SUCCEEDED) {
-    return skill_error("probe_grasp_retention", "gripper probe finished with a non-success action result",
-                       native_code(outcome.code));
-  }
-  if (outcome.result.reached_goal) {
-    return skill_error("probe_grasp_retention",
-                       "gripper reached the retention probe target; grasp is likely empty or dropped",
-                       native_code(outcome.code));
-  }
-
-  // not reached_goal -> the gripper is still stalled on the object, grasp retained
-  double held_position = 0.0;
-  const auto hold_result = hold_position(outcome.result.position, "probe_grasp_hold", held_position);
-  if (!hold_result.ok) {
-    return hold_result;
-  }
-  measured_position_ = held_position;
-  held_position_ = held_position;
-  RCLCPP_INFO(node_->get_logger(), "retention obstruction candidate: target=%.6f stalled_position=%.6f hold_position=%.6f",
-              probe_target, outcome.result.position, held_position);
-  return skill_ok("probe_grasp_retention");
 }
 
 }  // namespace sorting_arm

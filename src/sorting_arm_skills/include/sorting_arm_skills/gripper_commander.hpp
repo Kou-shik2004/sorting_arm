@@ -22,7 +22,6 @@ class GripperCommander {
 
   SkillResult open();
   SkillResult close();
-  SkillResult probe_grasp_retention();
 
  private:
   using GripperCommandAction = control_msgs::action::GripperCommand;
@@ -43,7 +42,6 @@ class GripperCommander {
   double close_step_rad_ = 0.0;
 
   std::optional<double> measured_position_;
-  std::optional<double> held_position_;
 
   rclcpp_action::Client<GripperCommandAction>::SharedPtr client_;
 };
