@@ -79,9 +79,6 @@ SkillResult SceneManager::query_allowed_collision_matrix(moveit_msgs::msg::Allow
   }
 
   const auto response = future.get();
-  if (response == nullptr) {
-    return skill_error("grasp_contacts", "get_planning_scene returned no response");
-  }
   matrix = response->scene.allowed_collision_matrix;
   return skill_ok("grasp_contacts");
 }

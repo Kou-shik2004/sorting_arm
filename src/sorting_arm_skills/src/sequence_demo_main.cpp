@@ -218,10 +218,6 @@ class SequenceDemo {
       return false;
     }
     const auto response = future.get();
-    if (response == nullptr) {
-      RCLCPP_ERROR(node_->get_logger(), "sync_objects returned no response");
-      return false;
-    }
     RCLCPP_INFO(node_->get_logger(), "sync_objects result: ok=%s message=%s", response->result.ok ? "true" : "false",
                 response->result.message.c_str());
     return response->result.ok;

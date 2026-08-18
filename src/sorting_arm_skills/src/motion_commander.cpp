@@ -8,7 +8,6 @@
 #include "moveit/robot_state/conversions.hpp"
 #include "moveit/robot_state/robot_state.hpp"
 #include "moveit/robot_trajectory/robot_trajectory.hpp"
-#include "moveit/trajectory_processing/time_optimal_trajectory_generation.hpp"
 #include "moveit_msgs/msg/move_it_error_codes.hpp"
 #include "moveit_msgs/msg/robot_trajectory.hpp"
 
@@ -18,18 +17,18 @@ using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 
 MotionCommander::MotionCommander(rclcpp::Node::SharedPtr node) : node_(std::move(node)), arm_(node_, "arm") {
   const auto planning_time_s = node_->declare_parameter<double>("planning.planning_time_s", 5.0);
-  planning_attempts_ = node_->declare_parameter<int>("planning.planning_attempts", 5);
-  velocity_scaling_ = node_->declare_parameter<double>("planning.velocity_scaling", 0.15);
-  acceleration_scaling_ = node_->declare_parameter<double>("planning.acceleration_scaling", 0.15);
+  const auto planning_attempts = node_->declare_parameter<int>("planning.planning_attempts", 5);
+  const auto velocity_scaling = node_->declare_parameter<double>("planning.velocity_scaling", 0.15);
+  const auto acceleration_scaling = node_->declare_parameter<double>("planning.acceleration_scaling", 0.15);
 
   eef_step_m_ = node_->declare_parameter<double>("cartesian.eef_step_m", 0.005);
   min_fraction_ = node_->declare_parameter<double>("cartesian.min_fraction", 0.99);
 
   arm_.setPoseReferenceFrame("world");
   arm_.setPlanningTime(planning_time_s);
-  arm_.setNumPlanningAttempts(static_cast<unsigned int>(planning_attempts_));
-  arm_.setMaxVelocityScalingFactor(velocity_scaling_);
-  arm_.setMaxAccelerationScalingFactor(acceleration_scaling_);
+  arm_.setNumPlanningAttempts(static_cast<unsigned int>(planning_attempts));
+  arm_.setMaxVelocityScalingFactor(velocity_scaling);
+  arm_.setMaxAccelerationScalingFactor(acceleration_scaling);
 }
 
 SkillResult MotionCommander::plan_and_execute(const std::string& phase, const std::string& plan_fail_message,
@@ -68,14 +67,11 @@ SkillResult MotionCommander::move_to_joints(const std::array<double, 6>& joint_v
 
 SkillResult MotionCommander::move_to_pose(const geometry_msgs::msg::PoseStamped& target) {
   if (!arm_.setPoseTarget(target)) {
-    arm_.clearPoseTargets();
     return skill_error("pose_motion", "setPoseTarget rejected the target");
   }
   arm_.setStartStateToCurrentState();
 
-  const auto result = plan_and_execute("pose_motion", "pose planning failed", "pose execution failed");
-  arm_.clearPoseTargets();
-  return result;
+  return plan_and_execute("pose_motion", "pose planning failed", "pose execution failed");
 }
 
 geometry_msgs::msg::PoseStamped MotionCommander::current_tcp_pose() const { return arm_.getCurrentPose("tcp"); }
@@ -83,41 +79,29 @@ geometry_msgs::msg::PoseStamped MotionCommander::current_tcp_pose() const { retu
 SkillResult MotionCommander::plan_pose_candidate(const geometry_msgs::msg::PoseStamped& target,
                                                  PreparedPoseMotion& prepared) {
   if (!arm_.setPoseTarget(target)) {
-    arm_.clearPoseTargets();
     return skill_error("pre_grasp", "setPoseTarget rejected the target");
   }
   arm_.setStartStateToCurrentState();
 
-  // we ask for one plan here so Pick can inspect each candidate separately
-  // and stop after its configured candidate bound
-  arm_.setNumPlanningAttempts(1);
   MoveGroupInterface::Plan plan;
   const auto plan_result = arm_.plan(plan);
-  arm_.setNumPlanningAttempts(static_cast<unsigned int>(planning_attempts_));
-  arm_.clearPoseTargets();
   if (!plan_result) {
     return skill_error("pre_grasp", "pre-grasp candidate planning failed", plan_result.val);
   }
 
   moveit::core::RobotState start_state(arm_.getRobotModel());
-  if (!moveit::core::robotStateMsgToRobotState(plan.start_state, start_state)) {
-    return skill_error("pre_grasp", "pre-grasp candidate start state conversion failed");
-  }
+  moveit::core::robotStateMsgToRobotState(plan.start_state, start_state);
   robot_trajectory::RobotTrajectory robot_traj(arm_.getRobotModel(), "arm");
   robot_traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
-  if (robot_traj.getWayPointCount() == 0) {
-    return skill_error("pre_grasp", "pre-grasp candidate contained no trajectory waypoints");
-  }
 
   prepared.plan = std::move(plan);
   prepared.terminal_state = std::make_shared<moveit::core::RobotState>(robot_traj.getLastWayPoint());
   return skill_ok("pre_grasp");
 }
 
-SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::RobotState& start_state,
-                                                       const geometry_msgs::msg::PoseStamped& target,
-                                                       const std::string& phase,
-                                                       moveit_msgs::msg::RobotTrajectory& trajectory_msg) {
+SkillResult MotionCommander::compute_cartesian_path(const moveit::core::RobotState& start_state,
+                                                    const geometry_msgs::msg::PoseStamped& target, const std::string& phase,
+                                                    moveit_msgs::msg::RobotTrajectory& trajectory_msg) {
   arm_.setStartState(start_state);
   const std::vector<geometry_msgs::msg::Pose> waypoints{target.pose};
   moveit_msgs::msg::MoveItErrorCodes error_code;
@@ -125,22 +109,10 @@ SkillResult MotionCommander::compute_retimed_cartesian(const moveit::core::Robot
       arm_.computeCartesianPath(waypoints, eef_step_m_, trajectory_msg, /*avoid_collisions=*/true, &error_code);
   arm_.setStartStateToCurrentState();
 
-  if (error_code.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
-    return skill_error(phase, "cartesian path computation reported an error", error_code.val);
-  }
   if (!accept_cartesian_fraction(fraction)) {
     return skill_error(phase, "cartesian coverage fraction below the configured minimum", error_code.val);
   }
 
-  robot_trajectory::RobotTrajectory robot_traj(arm_.getRobotModel(), "arm");
-  robot_traj.setRobotTrajectoryMsg(start_state, trajectory_msg);
-
-  trajectory_processing::TimeOptimalTrajectoryGeneration totg;
-  if (!totg.computeTimeStamps(robot_traj, velocity_scaling_, acceleration_scaling_)) {
-    return skill_error(phase, "time-optimal retiming failed");
-  }
-
-  robot_traj.getRobotTrajectoryMsg(trajectory_msg);
   return skill_ok(phase);
 }
 
@@ -152,7 +124,7 @@ SkillResult MotionCommander::plan_cartesian_from(const PreparedPoseMotion& start
                                                  const geometry_msgs::msg::PoseStamped& target,
                                                  PreparedCartesianMotion& prepared) {
   moveit_msgs::msg::RobotTrajectory trajectory_msg;
-  const auto compute_result = compute_retimed_cartesian(*start.terminal_state, target, "descend_preflight", trajectory_msg);
+  const auto compute_result = compute_cartesian_path(*start.terminal_state, target, "descend_preflight", trajectory_msg);
   if (!compute_result.ok) {
     return compute_result;
   }
@@ -187,7 +159,7 @@ SkillResult MotionCommander::move_cartesian_to(const geometry_msgs::msg::PoseSta
   }
 
   moveit_msgs::msg::RobotTrajectory trajectory_msg;
-  const auto compute_result = compute_retimed_cartesian(*current_state, target, "cartesian_motion", trajectory_msg);
+  const auto compute_result = compute_cartesian_path(*current_state, target, "cartesian_motion", trajectory_msg);
   if (!compute_result.ok) {
     return compute_result;
   }

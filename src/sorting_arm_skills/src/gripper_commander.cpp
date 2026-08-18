@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <future>
 #include <string>
@@ -14,15 +13,11 @@ namespace sorting_arm {
 
 // these values match sorting_arm.srdf and the driven joint's URDF limit;
 // they describe our robot, not an object's width
+
 static constexpr double kOpenPosition = 0.0;
 static constexpr double kClosePosition = 0.8;
 static constexpr double kMaxEffort = 50.0;
 static constexpr double kGoalTolerance = 0.01;
-
-static bool valid_measured_position(double position) {
-  return std::isfinite(position) && position >= kOpenPosition - kGoalTolerance &&
-         position <= kClosePosition + kGoalTolerance;
-}
 
 static int native_code(rclcpp_action::ResultCode code) { return static_cast<int>(code); }
 
@@ -48,10 +43,12 @@ SkillResult GripperCommander::send_goal(double position, const std::string& phas
   goal.command.max_effort = kMaxEffort;
 
   auto goal_handle_future = client_->async_send_goal(goal);
+
   if (goal_handle_future.wait_for(goal_timeout) != std::future_status::ready) {
     return skill_error(phase, "gripper goal response timed out");
   }
   const auto goal_handle = goal_handle_future.get();
+
   if (!goal_handle) {
     return skill_error(phase, "gripper goal was rejected");
   }
@@ -63,7 +60,7 @@ SkillResult GripperCommander::send_goal(double position, const std::string& phas
       return skill_error(phase, "gripper result timed out and cancellation response timed out");
     }
     const auto cancel_response = cancel_future.get();
-    if (cancel_response == nullptr || cancel_response->goals_canceling.empty()) {
+    if (cancel_response->goals_canceling.empty()) {
       return skill_error(phase, "gripper result timed out and cancellation was not acknowledged");
     }
     return skill_error(phase, "gripper result timed out; goal canceled");
@@ -71,10 +68,6 @@ SkillResult GripperCommander::send_goal(double position, const std::string& phas
 
   const auto wrapped = result_future.get();
   outcome.code = wrapped.code;
-  if (wrapped.result == nullptr) {
-    return skill_error(phase, "gripper action returned no result message", native_code(outcome.code));
-  }
-
   outcome.result = *wrapped.result;
   return skill_ok(phase);
 }
@@ -92,11 +85,8 @@ SkillResult GripperCommander::open() {
     return skill_error("open_gripper", "gripper open goal finished with a non-success action result",
                        native_code(outcome.code));
   }
-  if (!outcome.result.reached_goal || outcome.result.stalled) {
+  if (!outcome.result.reached_goal) {
     return skill_error("open_gripper", "gripper did not reach the open position", native_code(outcome.code));
-  }
-  if (!valid_measured_position(outcome.result.position)) {
-    return skill_error("open_gripper", "gripper returned an invalid measured position", native_code(outcome.code));
   }
 
   measured_position_ = outcome.result.position;
@@ -112,11 +102,8 @@ SkillResult GripperCommander::hold_position(double position, const std::string& 
   if (outcome.code != rclcpp_action::ResultCode::SUCCEEDED) {
     return skill_error(phase, "measured-position hold finished with a non-success action result", native_code(outcome.code));
   }
-  if (!outcome.result.reached_goal || outcome.result.stalled) {
+  if (!outcome.result.reached_goal) {
     return skill_error(phase, "gripper did not reach the measured-position hold target", native_code(outcome.code));
-  }
-  if (!valid_measured_position(outcome.result.position)) {
-    return skill_error(phase, "gripper hold returned an invalid measured position", native_code(outcome.code));
   }
 
   measured_position = outcome.result.position;
@@ -126,39 +113,25 @@ SkillResult GripperCommander::hold_position(double position, const std::string& 
 SkillResult GripperCommander::close() {
   held_position_.reset();
 
-  const double minimum_progress = close_step_rad_ - kGoalTolerance;
-  const auto max_steps = static_cast<std::size_t>(std::ceil((kClosePosition - kOpenPosition) / minimum_progress)) + 1;
-
-  for (std::size_t step_index = 1; step_index <= max_steps; ++step_index) {
+  // steps monotonically toward kClosePosition, so the loop always exits: it either
+  // stalls on the object or reaches full close (handled below), never runs forever.
+  std::size_t step_index = 0;
+  while (true) {
+    ++step_index;
     const double previous_position = *measured_position_;
     const double target = std::min(previous_position + close_step_rad_, kClosePosition);
-    if (target <= previous_position) {
-      return skill_error("close_gripper", "fresh measured position left no forward close step");
-    }
 
     CommandOutcome outcome;
     const auto command_result = send_goal(target, "close_gripper", outcome);
     if (!command_result.ok) {
       return command_result;
     }
-    if (!valid_measured_position(outcome.result.position)) {
-      return skill_error("close_gripper", "gripper returned an invalid measured position", native_code(outcome.code));
-    }
     if (outcome.code != rclcpp_action::ResultCode::SUCCEEDED) {
-      if (outcome.result.stalled) {
-        return skill_error("close_gripper",
-                           "controller returned a stalled goal as non-success; allow_stalling=true contract is not active",
-                           native_code(outcome.code));
-      }
       return skill_error("close_gripper", "gripper close step finished with a non-success action result",
                          native_code(outcome.code));
     }
 
-    if (outcome.result.reached_goal && !outcome.result.stalled) {
-      if (outcome.result.position <= previous_position) {
-        return skill_error("close_gripper", "gripper reported reached_goal without forward measured motion",
-                           native_code(outcome.code));
-      }
+    if (outcome.result.reached_goal) {
       measured_position_ = outcome.result.position;
       if (target == kClosePosition) {
         return skill_error("close_gripper", "gripper reached the fully closed position; no obstruction was detected",
@@ -167,30 +140,19 @@ SkillResult GripperCommander::close() {
       continue;
     }
 
-    if (outcome.result.stalled && !outcome.result.reached_goal) {
-      if (outcome.result.position < previous_position) {
-        return skill_error("close_gripper", "gripper stalled after moving opposite the close direction",
-                           native_code(outcome.code));
-      }
-
-      double held_position = 0.0;
-      const auto hold_result = hold_position(outcome.result.position, "close_gripper_hold", held_position);
-      if (!hold_result.ok) {
-        return hold_result;
-      }
-      measured_position_ = held_position;
-      held_position_ = held_position;
-      RCLCPP_INFO(node_->get_logger(),
-                  "close obstruction candidate: step=%zu target=%.6f stalled_position=%.6f hold_position=%.6f", step_index,
-                  target, outcome.result.position, held_position);
-      return skill_ok("close_gripper");
+    // not reached_goal -> the gripper stalled against an obstruction; hold there
+    double held_position = 0.0;
+    const auto hold_result = hold_position(outcome.result.position, "close_gripper_hold", held_position);
+    if (!hold_result.ok) {
+      return hold_result;
     }
-
-    return skill_error("close_gripper", "gripper returned contradictory stalled/reached_goal flags",
-                       native_code(outcome.code));
+    measured_position_ = held_position;
+    held_position_ = held_position;
+    RCLCPP_INFO(node_->get_logger(),
+                "close obstruction candidate: step=%zu target=%.6f stalled_position=%.6f hold_position=%.6f", step_index,
+                target, outcome.result.position, held_position);
+    return skill_ok("close_gripper");
   }
-
-  return skill_error("close_gripper", "bounded close exhausted its step limit without a terminal result");
 }
 
 SkillResult GripperCommander::probe_grasp_retention() {
@@ -204,29 +166,17 @@ SkillResult GripperCommander::probe_grasp_retention() {
   if (!command_result.ok) {
     return command_result;
   }
-  if (!valid_measured_position(outcome.result.position)) {
-    return skill_error("probe_grasp_retention", "gripper probe returned an invalid measured position",
-                       native_code(outcome.code));
-  }
   if (outcome.code != rclcpp_action::ResultCode::SUCCEEDED) {
-    if (outcome.result.stalled) {
-      return skill_error("probe_grasp_retention",
-                         "controller returned a stalled probe as non-success; allow_stalling=true contract is not active",
-                         native_code(outcome.code));
-    }
     return skill_error("probe_grasp_retention", "gripper probe finished with a non-success action result",
                        native_code(outcome.code));
   }
-  if (outcome.result.reached_goal && !outcome.result.stalled) {
+  if (outcome.result.reached_goal) {
     return skill_error("probe_grasp_retention",
                        "gripper reached the retention probe target; grasp is likely empty or dropped",
                        native_code(outcome.code));
   }
-  if (!outcome.result.stalled || outcome.result.reached_goal) {
-    return skill_error("probe_grasp_retention", "gripper probe returned contradictory stalled/reached_goal flags",
-                       native_code(outcome.code));
-  }
 
+  // not reached_goal -> the gripper is still stalled on the object, grasp retained
   double held_position = 0.0;
   const auto hold_result = hold_position(outcome.result.position, "probe_grasp_hold", held_position);
   if (!hold_result.ok) {

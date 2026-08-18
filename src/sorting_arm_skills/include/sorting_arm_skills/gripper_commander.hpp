@@ -15,6 +15,7 @@ namespace sorting_arm {
 // robot's fixed SRDF endpoints; the controller's native result decides success.
 // Blocks the calling thread — must only be called from the sequence worker,
 // never the executor.
+
 class GripperCommander {
  public:
   explicit GripperCommander(rclcpp::Node::SharedPtr node);

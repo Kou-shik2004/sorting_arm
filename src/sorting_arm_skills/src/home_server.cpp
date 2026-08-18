@@ -62,9 +62,6 @@ void HomeServerNode::run(std::stop_token stop_token, std::shared_ptr<GoalHandle>
   } catch (const std::exception& error) {
     result->result = to_msg(skill_error("internal", "Home worker exception: " + std::string(error.what())));
     goal_handle->abort(result);
-  } catch (...) {
-    result->result = to_msg(skill_error("internal", "Home worker caught an unknown exception"));
-    goal_handle->abort(result);
   }
   state_.release();
 }
