@@ -65,11 +65,10 @@ void ExecutiveNode::initialize() {
   factory_.registerNodeType<PickNode>("Pick", make_params("pick"), report_);
   factory_.registerNodeType<PlaceNode>("Place", make_params("place"), report_);
 
-  const auto tree_path =
+  // build the tree only after readiness (see check_readiness) - each RosActionNode probes its
+  // server in its constructor, so building here would log "not reachable" before the servers are up
+  tree_path_ =
       ament_index_cpp::get_package_share_directory("sorting_arm_executive") + "/behavior_trees/sorting_cycle.xml";
-  auto blackboard = BT::Blackboard::create();
-  blackboard->set("cycle_object_count", static_cast<int>(config_.cycle_object_count));
-  tree_ = factory_.createTreeFromFile(tree_path, blackboard);
   readiness_deadline_ = deadline_after(config_.readiness_timeout_s);
   timer_ = create_wall_timer(20ms, [this] { tick(); });
   RCLCPP_INFO(get_logger(), "executive loaded; waiting for controllers and application endpoints");
@@ -116,10 +115,18 @@ void ExecutiveNode::check_readiness() {
     next_controller_query_ = now + 200ms;
   }
 
-  // Pick/Place/Home live in the same node as sync_objects and are created before it, so
-  // sync readiness stands in for the action servers; RosActionNode covers the rare residual.
+  // sync_objects shares skill_server_node with home/pick/place; building the tree here, not in
+  // initialize, lets each action node's constructor probe find its server instead of logging at cold start
   const bool endpoints_ready = detect_client_->service_is_ready() && sync_client_->service_is_ready();
   if (controllers_ready_ && endpoints_ready) {
+    auto blackboard = BT::Blackboard::create();
+    blackboard->set("cycle_object_count", static_cast<int>(config_.cycle_object_count));
+    try {
+      tree_ = factory_.createTreeFromFile(tree_path_, blackboard);
+    } catch (const std::exception& error) {
+      fail_startup("BehaviorTree construction failed: " + std::string(error.what()));
+      return;
+    }
     state_ = CycleState::running;
     RCLCPP_INFO(get_logger(), "readiness complete; starting the one sorting cycle");
     return;

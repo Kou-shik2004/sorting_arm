@@ -45,6 +45,7 @@ class ExecutiveNode : public rclcpp::Node {
   std::optional<rclcpp::Client<controller_manager_msgs::srv::ListControllers>::FutureAndRequestId> controller_request_;
 
   BT::BehaviorTreeFactory factory_;
+  std::string tree_path_;
   BT::Tree tree_;
   rclcpp::TimerBase::SharedPtr timer_;
   CycleState state_ = CycleState::waiting_for_readiness;
