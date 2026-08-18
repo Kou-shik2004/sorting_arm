@@ -20,7 +20,7 @@ not just complete enough for a machine that already has everything installed.
 | Runtime dependency check | `runtime-deps-check` (`ci.yml`) | `rosdep check` for exec dependencies against the headless package set: nothing the runtime image needs is undeclared |
 | Runtime image build | `runtime-headless` (`ci.yml`) | The image runs as non-root, carries the current commit's test-pass marker, contains no compiler, `colcon`, `rosdep`, `sudo`, or GUI package, and defaults to headless `app.launch.xml` |
 | Headless smoke test | `smoke` (`ci.yml`) | `app.launch.xml gui:=false show_viewer:=false` starts the platform and application: clock, joint states, active controllers, MoveIt's action, the five application endpoints, and camera image and calibration topics, bounded at 300 seconds |
-| Full sorting cycle | `full-cycle` (`ci.yml`) | On a manual run or weekly schedule only, runs one complete sorting cycle and checks the executive's terminal success output has `completed == total`; failure uploads its log and does not block CI |
+| Full sorting cycle | `full-cycle` (`ci.yml`) | On a manual run only, runs one complete sorting cycle and checks the executive's terminal success output has `completed == total`; failure uploads its log and does not block CI |
 
 **Build and test.** `.docker/runtime/Dockerfile`'s `test` stage runs
 `colcon build --cmake-args -DBUILD_TESTING=ON`, then `colcon test` with
@@ -57,11 +57,19 @@ evaluated only through application readiness, before the executive begins its so
 cycle.
 
 **Full sorting cycle.** The non-blocking `full-cycle` job is intentionally separate
-from the push gate. It runs only for `workflow_dispatch` and the weekly schedule,
-uses the same smoke image, and waits up to 15 minutes for the executive's terminal
-success output. It asserts that completed jobs equal total jobs. Planning and Gazebo
-contact behaviour are nondeterministic on shared runners, so a failure uploads its
-full log for investigation but does not make the workflow a required verdict.
+from the push gate. It runs only for `workflow_dispatch`, uses the same smoke image,
+and gives the application five minutes to report terminal success. A six-minute outer
+command limit leaves one minute for failure reporting and shutdown. It asserts that
+completed jobs equal total jobs. Planning and Gazebo contact behaviour are
+nondeterministic on shared runners, so a failure uploads its full log for
+investigation but does not make the workflow a required verdict.
+
+The full-cycle harness keeps permanent runner diagnostics. Gazebo reports the source
+RGB and depth rendering frequencies. The ROS test node reports bridged RGB, depth,
+and synchronized-pair rates every ten seconds, along with delivery gaps, RGB-depth
+timestamp difference, and simulation real-time factor. These values are evidence,
+not pass thresholds. In particular, the perception provider's three-second capture
+timeout is not widened merely because a shared runner misses a frame pair.
 
 ## When CI runs
 
@@ -70,8 +78,8 @@ events use the same allowlist: `src/**` except Markdown files, `.docker/runtime/
 and `.github/workflows/**`. Documentation-only changes therefore create no run. A
 workflow-level concurrency group cancels an older run for the same ref when a newer
 commit arrives. A branch with an open pull request receives one CI run from the pull
-request event, not an additional push run. The weekly schedule is the exception: it
-also starts the regular job and the non-blocking full-cycle job.
+request event, not an additional push run. The non-blocking full-cycle job must be
+started manually.
 
 ## The manifest-omission trap
 
