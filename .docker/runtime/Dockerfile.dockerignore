@@ -1,11 +1,13 @@
 **
 !.docker/
 .docker/*
+!.docker/underlay.repos
 !.docker/runtime/
 .docker/runtime/*
 !.docker/runtime/packages/
 .docker/runtime/packages/*
 !.docker/runtime/packages/gui-skip-keys.txt
+!.docker/runtime/packages/underlay-skip-keys.txt
 !.docker/runtime/resolve-dependencies.sh
 !.docker/runtime/entrypoint.sh
 !.docker/runtime/smoke/

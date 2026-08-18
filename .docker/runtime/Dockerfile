@@ -21,8 +21,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       build-essential \
       ca-certificates \
       cmake \
+      git \
       python3-colcon-common-extensions \
-      python3-rosdep
+      python3-rosdep \
+      python3-vcstool
 
 COPY src/sorting_arm_bringup/package.xml /tmp/sorting-arm-src/sorting_arm_bringup/
 COPY src/sorting_arm_description/package.xml /tmp/sorting-arm-src/sorting_arm_description/
@@ -48,7 +50,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       --dependency-types buildtool_export \
       --dependency-types test \
       --as-root apt:false \
+      --skip-keys "behaviortree_ros2" \
       -y
+
+# behaviortree_ros2 is source-only (no apt/rosdep key), so build it into an underlay
+# the same way the public image does; the skip-keys above keeps rosdep from failing on it
+COPY .docker/underlay.repos /opt/underlay.repos
+RUN . /opt/ros/jazzy/setup.sh \
+ && mkdir -p /opt/underlay/src \
+ && vcs import /opt/underlay/src < /opt/underlay.repos \
+ && colcon build --base-paths /opt/underlay/src \
+      --build-base /opt/underlay/build \
+      --install-base /opt/underlay/install \
+      --merge-install \
+      --packages-select btcpp_ros2_interfaces behaviortree_ros2 \
+ && rm -rf /opt/underlay/build /opt/underlay/log /opt/underlay/src
 
 ENV AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS=1
 
@@ -64,6 +80,7 @@ RUN find src -mindepth 2 -maxdepth 2 -name package.xml -printf '%h\n' | xargs -n
  && diff /tmp/src-packages.txt /tmp/manifest-packages.txt
 
 RUN source /opt/ros/jazzy/setup.bash \
+ && source /opt/underlay/install/setup.bash \
  && colcon --log-base log build \
       --base-paths src \
       --build-base build \
@@ -83,6 +100,7 @@ RUN test -n "${GIT_COMMIT_SHA}" \
  && test -n "${GITHUB_RUN_ID}" \
  && printf '%s\n' "${GITHUB_RUN_ID}" > /tmp/github-run-id \
  && source /opt/ros/jazzy/setup.bash \
+ && source /opt/underlay/install/setup.bash \
  && source /sorting_arm_ws/install/setup.bash \
  && colcon --log-base test-log test \
       --base-paths src \
@@ -144,10 +162,12 @@ USER ubuntu
 
 RUN --mount=type=bind,source=.docker/runtime/resolve-dependencies.sh,target=/tmp/resolve-dependencies.sh,readonly \
     --mount=type=bind,source=.docker/runtime/packages/gui-skip-keys.txt,target=/tmp/gui-skip-keys.txt,readonly \
+    --mount=type=bind,source=.docker/runtime/packages/underlay-skip-keys.txt,target=/tmp/underlay-skip-keys.txt,readonly \
     rosdep update --rosdistro jazzy \
+ && cat /tmp/gui-skip-keys.txt /tmp/underlay-skip-keys.txt > /tmp/skip-keys.txt \
  && bash /tmp/resolve-dependencies.sh \
       /tmp/sorting-arm-src \
-      /tmp/gui-skip-keys.txt \
+      /tmp/skip-keys.txt \
       /tmp/runtime-apt.txt
 
 FROM runtime-base AS runtime-deps
@@ -191,7 +211,8 @@ ENV HOME=/home/ubuntu
 USER ubuntu
 
 RUN --mount=type=bind,source=.docker/runtime/packages/gui-skip-keys.txt,target=/tmp/gui-skip-keys.txt,readonly \
-    skip_keys="$(grep -vE '^[[:space:]]*(#|$)' /tmp/gui-skip-keys.txt | tr '\n' ' ')" \
+    --mount=type=bind,source=.docker/runtime/packages/underlay-skip-keys.txt,target=/tmp/underlay-skip-keys.txt,readonly \
+    skip_keys="$(grep -vhE '^[[:space:]]*(#|$)' /tmp/gui-skip-keys.txt /tmp/underlay-skip-keys.txt | tr '\n' ' ')" \
  && test -n "${skip_keys}" \
  && rosdep update --rosdistro jazzy \
  && rosdep check \
@@ -218,6 +239,7 @@ RUN install -d -o ubuntu -g ubuntu -m 0755 \
       "${XDG_CACHE_HOME}/gz" \
  && install -d -o ubuntu -g ubuntu -m 0700 "${XDG_RUNTIME_DIR}"
 
+COPY --from=build-deps /opt/underlay/install/ /opt/underlay/install/
 COPY --from=workspace-builder /sorting_arm_ws/install/ /sorting_arm_ws/install/
 COPY --from=test /sorting_arm_ws/.ci/test-passed.sha /sorting_arm_ws/.ci/test-passed.sha
 COPY --chmod=0755 .docker/runtime/entrypoint.sh /usr/local/bin/sorting-arm-entrypoint
