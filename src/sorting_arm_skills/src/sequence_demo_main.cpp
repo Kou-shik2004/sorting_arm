@@ -1,6 +1,7 @@
 #include <chrono>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,10 +45,16 @@ bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_actio
                 const typename ActionT::Goal& goal, double timeout_s, const std::string& label,
                 sorting_arm_interfaces::msg::SkillResult& out_result) {
   using GoalHandle = rclcpp_action::ClientGoalHandle<ActionT>;
-  const auto timeout = std::chrono::duration<double>(timeout_s);
+  // shared so a late callback firing after a timeout writes to live state, not our stack
   auto last_phase = std::make_shared<std::string>();
+  auto rejected = std::make_shared<bool>(false);
+  auto result = std::make_shared<std::optional<typename GoalHandle::WrappedResult>>();
 
   typename rclcpp_action::Client<ActionT>::SendGoalOptions options;
+  options.goal_response_callback = [node, label, rejected](typename GoalHandle::SharedPtr handle) {
+    *rejected = handle == nullptr;
+    RCLCPP_INFO(node->get_logger(), "%s: goal %s", label.c_str(), *rejected ? "rejected" : "accepted");
+  };
   options.feedback_callback = [node, label, last_phase](typename GoalHandle::SharedPtr,
                                                         const std::shared_ptr<const typename ActionT::Feedback> feedback) {
     if (feedback->phase != *last_phase) {
@@ -55,32 +62,28 @@ bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_actio
       RCLCPP_INFO(node->get_logger(), "%s: phase=%s", label.c_str(), last_phase->c_str());
     }
   };
+  options.result_callback = [result](const typename GoalHandle::WrappedResult& wrapped) { *result = wrapped; };
 
-  auto goal_handle_future = client->async_send_goal(goal, options);
-  if (rclcpp::spin_until_future_complete(node, goal_handle_future, timeout) != rclcpp::FutureReturnCode::SUCCESS) {
-    RCLCPP_ERROR(node->get_logger(), "%s: goal-response timed out", label.c_str());
-    return false;
-  }
-  const auto goal_handle = goal_handle_future.get();
-  if (!goal_handle) {
-    RCLCPP_ERROR(node->get_logger(), "%s: goal was rejected", label.c_str());
-    return false;
-  }
+  client->async_send_goal(goal, options);
 
-  auto result_future = client->async_get_result(goal_handle);
-  if (rclcpp::spin_until_future_complete(node, result_future, timeout) != rclcpp::FutureReturnCode::SUCCESS) {
-    RCLCPP_ERROR(node->get_logger(), "%s: result timed out", label.c_str());
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(node);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                                               std::chrono::duration<double>(timeout_s));
+  while (rclcpp::ok() && !*rejected && !result->has_value() && std::chrono::steady_clock::now() < deadline) {
+    executor.spin_once(std::chrono::milliseconds(100));
+  }
+  executor.remove_node(node);
+
+  if (*rejected) {
     return false;
   }
-  const auto wrapped = result_future.get();
-  // the server populates Result on abort/cancel too (goal_handle->abort(result) still
-  // sends it) — read it before deciding success, or the real failure reason is lost
-  if (!wrapped.result) {
-    RCLCPP_ERROR(node->get_logger(), "%s: action ended with code=%d and no result message", label.c_str(),
-                 static_cast<int>(wrapped.code));
+  if (!result->has_value()) {
+    RCLCPP_ERROR(node->get_logger(), "%s: timed out", label.c_str());
     return false;
   }
 
+  const auto& wrapped = result->value();
   out_result = wrapped.result->result;
   RCLCPP_INFO(node->get_logger(), "%s result: code=%d ok=%s phase=%s native_code=%d message=%s", label.c_str(),
               static_cast<int>(wrapped.code), out_result.ok ? "true" : "false", out_result.phase.c_str(),

@@ -8,6 +8,7 @@ int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   try {
     auto node = std::make_shared<sorting_arm_executive::ExecutiveNode>();
+    node->initialize();
     rclcpp::spin(node);
   } catch (const std::exception& error) {
     RCLCPP_FATAL(rclcpp::get_logger("sorting_arm_executive"), "startup failed: %s", error.what());

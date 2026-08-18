@@ -8,12 +8,8 @@
 #include "behaviortree_cpp/bt_factory.h"
 #include "controller_manager_msgs/srv/list_controllers.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "rclcpp_action/client.hpp"
 #include "sorting_arm_executive/assignment_planner.hpp"
 #include "sorting_arm_executive/config.hpp"
-#include "sorting_arm_interfaces/action/home.hpp"
-#include "sorting_arm_interfaces/action/pick.hpp"
-#include "sorting_arm_interfaces/action/place.hpp"
 #include "sorting_arm_interfaces/srv/detect_objects.hpp"
 #include "sorting_arm_interfaces/srv/sync_objects.hpp"
 
@@ -24,6 +20,10 @@ enum class CycleState { waiting_for_readiness, running, succeeded, failed };
 class ExecutiveNode : public rclcpp::Node {
  public:
   explicit ExecutiveNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+
+  // second-phase startup: registers BT nodes and builds the tree once the node is owned
+  // by a shared_ptr, so RosActionNode's RosNodeParams can take shared_from_this()
+  void initialize();
 
   CycleState cycle_state() const;
   const ExecutionReport& report() const;
@@ -39,9 +39,6 @@ class ExecutiveNode : public rclcpp::Node {
   std::optional<AssignmentPlanner> planner_;
   std::shared_ptr<ExecutionReport> report_ = std::make_shared<ExecutionReport>();
 
-  rclcpp_action::Client<sorting_arm_interfaces::action::Home>::SharedPtr home_client_;
-  rclcpp_action::Client<sorting_arm_interfaces::action::Pick>::SharedPtr pick_client_;
-  rclcpp_action::Client<sorting_arm_interfaces::action::Place>::SharedPtr place_client_;
   rclcpp::Client<sorting_arm_interfaces::srv::DetectObjects>::SharedPtr detect_client_;
   rclcpp::Client<sorting_arm_interfaces::srv::SyncObjects>::SharedPtr sync_client_;
   rclcpp::Client<controller_manager_msgs::srv::ListControllers>::SharedPtr controller_client_;

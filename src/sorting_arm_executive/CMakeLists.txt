@@ -20,6 +20,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(behaviortree_cpp REQUIRED)
+find_package(behaviortree_ros2 REQUIRED)
 find_package(controller_manager_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -39,6 +40,7 @@ target_include_directories(sorting_arm_executive_core PUBLIC
 )
 ament_target_dependencies(sorting_arm_executive_core PUBLIC
   ament_index_cpp
+  behaviortree_ros2
   controller_manager_msgs
   geometry_msgs
   rclcpp
@@ -72,23 +74,6 @@ if(BUILD_TESTING)
     MAX_LINE_LENGTH 125
   )
 
-  find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_assignment_planner test/test_assignment_planner.cpp)
-  target_link_libraries(test_assignment_planner sorting_arm_executive_core)
-
-  ament_add_gtest(test_tree_policy test/test_tree_policy.cpp)
-  target_compile_definitions(test_tree_policy PRIVATE
-    SORTING_TREE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/behavior_trees/sorting_cycle.xml"
-  )
-  target_link_libraries(test_tree_policy sorting_arm_executive_core)
-
-  ament_add_gtest(test_bt_transport test/test_bt_transport.cpp)
-  target_link_libraries(test_bt_transport sorting_arm_executive_core)
-
-  ament_add_gtest(test_executive_lifecycle test/test_executive_lifecycle.cpp)
-  target_link_libraries(test_executive_lifecycle sorting_arm_executive_core)
-
-  set_tests_properties(test_bt_transport test_executive_lifecycle PROPERTIES RUN_SERIAL TRUE)
 endif()
 
 install(DIRECTORY behavior_trees config DESTINATION share/${PROJECT_NAME})

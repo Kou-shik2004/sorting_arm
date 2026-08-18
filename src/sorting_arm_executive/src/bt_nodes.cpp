@@ -4,6 +4,7 @@
 #include <chrono>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -34,21 +35,33 @@ void record_failure(const std::shared_ptr<ExecutionReport>& report,
   }
 }
 
+// RosActionNode routes only SUCCEEDED here; a server can still finish cleanly with a
+// logical ok=false, so a non-ok payload is a FAILURE carrying that message.
 template <typename WrappedResult>
-BT::NodeStatus map_action_result(const WrappedResult& wrapped, const std::shared_ptr<ExecutionReport>& report) {
-  if (wrapped.result == nullptr) {
-    record_failure(report, failure_result("transport", "action returned no result message"));
-    return BT::NodeStatus::FAILURE;
-  }
-  if (wrapped.code == rclcpp_action::ResultCode::SUCCEEDED && wrapped.result->result.ok) {
+BT::NodeStatus report_success_result(const std::shared_ptr<ExecutionReport>& report, const WrappedResult& wrapped) {
+  if (wrapped.result->result.ok) {
     return BT::NodeStatus::SUCCESS;
   }
-  if (wrapped.result->result.ok) {
-    record_failure(report, failure_result("transport", "action transport status contradicted a successful result"));
-  } else {
-    record_failure(report, wrapped.result->result);
-  }
+  record_failure(report, wrapped.result->result);
   return BT::NodeStatus::FAILURE;
+}
+
+BT::NodeStatus report_error(const std::shared_ptr<ExecutionReport>& report, const std::string& phase,
+                            BT::ActionNodeErrorCode error) {
+  record_failure(report, failure_result(phase, phase + " " + BT::toStr(error)));
+  return BT::NodeStatus::FAILURE;
+}
+
+// abort/cancel carry the server's real SkillResult; a transport error (reject/timeout/
+// unreachable) has no payload, so fall back to the error-code name.
+template <typename WrappedResult>
+BT::NodeStatus report_failure(const std::shared_ptr<ExecutionReport>& report, const std::string& phase,
+                              BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
+  if (result && !result->result->result.ok) {
+    record_failure(report, result->result->result);
+    return BT::NodeStatus::FAILURE;
+  }
+  return report_error(report, phase, error);
 }
 
 }  // namespace
@@ -288,264 +301,106 @@ void SyncObjectsNode::onHalted() {
   }
 }
 
-HomeNode::HomeNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
-                   double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-                   rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
-    : BT::StatefulActionNode(name, config),
-      client_(std::move(client)),
-      action_timeout_s_(action_timeout_s),
-      cancel_timeout_s_(cancel_timeout_s),
-      report_(std::move(report)),
-      logger_(std::move(logger)),
-      clock_(std::move(clock)) {}
+HomeNode::HomeNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+                   std::shared_ptr<ExecutionReport> report)
+    : BT::RosActionNode<Action>(name, config, params), report_(std::move(report)) {}
 
-BT::PortsList HomeNode::providedPorts() { return {}; }
+BT::PortsList HomeNode::providedPorts() { return providedBasicPorts({}); }
 
-BT::NodeStatus HomeNode::onStart() {
-  report_->operation = name();
+bool HomeNode::setGoal(Goal&) {
+  report_->operation = "Home";
   report_->object_id.clear();
   report_->phase.clear();
-  stage_ = Stage::waiting_goal;
-  goal_handle_.reset();
-  rclcpp_action::Client<Action>::SendGoalOptions options;
-  options.feedback_callback = [this](GoalHandle::SharedPtr, const std::shared_ptr<const Action::Feedback> feedback) {
-    report_->phase = feedback->phase;
-    RCLCPP_INFO(logger_, "%s phase=%s", name().c_str(), feedback->phase.c_str());
-  };
-  try {
-    goal_future_ = client_->async_send_goal(Action::Goal{}, options);
-    deadline_ = deadline_after(clock_, action_timeout_s_);
-    return BT::NodeStatus::RUNNING;
-  } catch (const std::exception& error) {
-    record_failure(report_, failure_result("home", "Home goal failed: " + std::string(error.what())));
-    return BT::NodeStatus::FAILURE;
-  }
+  return true;
 }
 
-BT::NodeStatus HomeNode::onRunning() {
-  if (stage_ == Stage::waiting_goal && goal_future_.wait_for(0s) == std::future_status::ready) {
-    goal_handle_ = goal_future_.get();
-    if (goal_handle_ == nullptr) {
-      record_failure(report_, failure_result("home", "Home goal was rejected"));
-      return BT::NodeStatus::FAILURE;
-    }
-    result_future_ = client_->async_get_result(goal_handle_);
-    stage_ = Stage::waiting_result;
-  }
-  if ((stage_ == Stage::waiting_result || stage_ == Stage::canceling) && result_future_.valid() &&
-      result_future_.wait_for(0s) == std::future_status::ready) {
-    return finish(result_future_.get());
-  }
-  if (clock_->now() >= deadline_) {
-    if (stage_ == Stage::waiting_goal) {
-      record_failure(report_, failure_result("home", "Home goal response timed out"));
-      return BT::NodeStatus::FAILURE;
-    }
-    if (stage_ == Stage::waiting_result) {
-      request_cancel("Home result timed out");
-      return BT::NodeStatus::RUNNING;
-    }
-    return BT::NodeStatus::FAILURE;
-  }
+BT::NodeStatus HomeNode::onFeedback(const std::shared_ptr<const Feedback> feedback) {
+  report_->phase = feedback->phase;
+  RCLCPP_INFO(logger(), "Home phase=%s", feedback->phase.c_str());
   return BT::NodeStatus::RUNNING;
 }
 
-void HomeNode::onHalted() { request_cancel("Home halted"); }
+BT::NodeStatus HomeNode::onResultReceived(const WrappedResult& result) { return report_success_result(report_, result); }
 
-void HomeNode::request_cancel(const std::string& reason) {
-  record_failure(report_, failure_result("home", reason));
-  if (goal_handle_ != nullptr && stage_ != Stage::canceling) {
-    try {
-      client_->async_cancel_goal(goal_handle_);
-      stage_ = Stage::canceling;
-      deadline_ = deadline_after(clock_, cancel_timeout_s_);
-    } catch (const std::exception& error) {
-      record_failure(report_, failure_result("home", reason + "; cancellation failed: " + error.what()));
-    }
-  }
+BT::NodeStatus HomeNode::onFailure(BT::ActionNodeErrorCode error) { return report_error(report_, "home", error); }
+
+BT::NodeStatus HomeNode::onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
+  return report_failure(report_, "home", error, result);
 }
 
-BT::NodeStatus HomeNode::finish(const GoalHandle::WrappedResult& wrapped) { return map_action_result(wrapped, report_); }
+PickNode::PickNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+                   std::shared_ptr<ExecutionReport> report)
+    : BT::RosActionNode<Action>(name, config, params), report_(std::move(report)) {}
 
-PickNode::PickNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
-                   double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-                   rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
-    : BT::StatefulActionNode(name, config),
-      client_(std::move(client)),
-      action_timeout_s_(action_timeout_s),
-      cancel_timeout_s_(cancel_timeout_s),
-      report_(std::move(report)),
-      logger_(std::move(logger)),
-      clock_(std::move(clock)) {}
+BT::PortsList PickNode::providedPorts() { return providedBasicPorts({BT::InputPort<SortJob>("job")}); }
 
-BT::PortsList PickNode::providedPorts() { return {BT::InputPort<SortJob>("job")}; }
-
-BT::NodeStatus PickNode::onStart() {
+bool PickNode::setGoal(Goal& goal) {
   SortJob job;
   const auto input = getInput("job", job);
   if (!input) {
     record_failure(report_, failure_result("pick", input.error()));
-    return BT::NodeStatus::FAILURE;
+    return false;
   }
   report_->operation = "Pick";
   report_->object_id = job.object_id;
   report_->phase.clear();
-  stage_ = Stage::waiting_goal;
-  goal_handle_.reset();
-  Action::Goal goal;
   goal.object_id = job.object_id;
-  rclcpp_action::Client<Action>::SendGoalOptions options;
-  options.feedback_callback = [this](GoalHandle::SharedPtr, const std::shared_ptr<const Action::Feedback> feedback) {
-    report_->phase = feedback->phase;
-    RCLCPP_INFO(logger_, "Pick object=%s phase=%s", report_->object_id.c_str(), feedback->phase.c_str());
-  };
-  try {
-    goal_future_ = client_->async_send_goal(goal, options);
-    deadline_ = deadline_after(clock_, action_timeout_s_);
-    return BT::NodeStatus::RUNNING;
-  } catch (const std::exception& error) {
-    record_failure(report_, failure_result("pick", "Pick goal failed: " + std::string(error.what())));
-    return BT::NodeStatus::FAILURE;
-  }
+  return true;
 }
 
-BT::NodeStatus PickNode::onRunning() {
-  if (stage_ == Stage::waiting_goal && goal_future_.wait_for(0s) == std::future_status::ready) {
-    goal_handle_ = goal_future_.get();
-    if (goal_handle_ == nullptr) {
-      record_failure(report_, failure_result("pick", "Pick goal was rejected"));
-      return BT::NodeStatus::FAILURE;
-    }
-    result_future_ = client_->async_get_result(goal_handle_);
-    stage_ = Stage::waiting_result;
-  }
-  if ((stage_ == Stage::waiting_result || stage_ == Stage::canceling) && result_future_.valid() &&
-      result_future_.wait_for(0s) == std::future_status::ready) {
-    return finish(result_future_.get());
-  }
-  if (clock_->now() >= deadline_) {
-    if (stage_ == Stage::waiting_goal) {
-      record_failure(report_, failure_result("pick", "Pick goal response timed out"));
-      return BT::NodeStatus::FAILURE;
-    }
-    if (stage_ == Stage::waiting_result) {
-      request_cancel("Pick result timed out");
-      return BT::NodeStatus::RUNNING;
-    }
-    return BT::NodeStatus::FAILURE;
-  }
+BT::NodeStatus PickNode::onFeedback(const std::shared_ptr<const Feedback> feedback) {
+  report_->phase = feedback->phase;
+  RCLCPP_INFO(logger(), "Pick object=%s phase=%s", report_->object_id.c_str(), feedback->phase.c_str());
   return BT::NodeStatus::RUNNING;
 }
 
-void PickNode::onHalted() { request_cancel("Pick halted"); }
+BT::NodeStatus PickNode::onResultReceived(const WrappedResult& result) { return report_success_result(report_, result); }
 
-void PickNode::request_cancel(const std::string& reason) {
-  record_failure(report_, failure_result("pick", reason));
-  if (goal_handle_ != nullptr && stage_ != Stage::canceling) {
-    try {
-      client_->async_cancel_goal(goal_handle_);
-      stage_ = Stage::canceling;
-      deadline_ = deadline_after(clock_, cancel_timeout_s_);
-    } catch (const std::exception& error) {
-      record_failure(report_, failure_result("pick", reason + "; cancellation failed: " + error.what()));
-    }
-  }
+BT::NodeStatus PickNode::onFailure(BT::ActionNodeErrorCode error) { return report_error(report_, "pick", error); }
+
+BT::NodeStatus PickNode::onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
+  return report_failure(report_, "pick", error, result);
 }
 
-BT::NodeStatus PickNode::finish(const GoalHandle::WrappedResult& wrapped) { return map_action_result(wrapped, report_); }
+PlaceNode::PlaceNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+                     std::shared_ptr<ExecutionReport> report)
+    : BT::RosActionNode<Action>(name, config, params), report_(std::move(report)) {}
 
-PlaceNode::PlaceNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
-                     double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-                     rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
-    : BT::StatefulActionNode(name, config),
-      client_(std::move(client)),
-      action_timeout_s_(action_timeout_s),
-      cancel_timeout_s_(cancel_timeout_s),
-      report_(std::move(report)),
-      logger_(std::move(logger)),
-      clock_(std::move(clock)) {}
+BT::PortsList PlaceNode::providedPorts() { return providedBasicPorts({BT::InputPort<SortJob>("job")}); }
 
-BT::PortsList PlaceNode::providedPorts() { return {BT::InputPort<SortJob>("job")}; }
-
-BT::NodeStatus PlaceNode::onStart() {
+bool PlaceNode::setGoal(Goal& goal) {
   SortJob job;
   const auto input = getInput("job", job);
   if (!input) {
     record_failure(report_, failure_result("place", input.error()));
-    return BT::NodeStatus::FAILURE;
+    return false;
   }
   report_->operation = "Place";
   report_->object_id = job.object_id;
   report_->phase.clear();
-  stage_ = Stage::waiting_goal;
-  goal_handle_.reset();
-  Action::Goal goal;
   goal.object_id = job.object_id;
   goal.destination = job.destination;
-  rclcpp_action::Client<Action>::SendGoalOptions options;
-  options.feedback_callback = [this](GoalHandle::SharedPtr, const std::shared_ptr<const Action::Feedback> feedback) {
-    report_->phase = feedback->phase;
-    RCLCPP_INFO(logger_, "Place object=%s phase=%s", report_->object_id.c_str(), feedback->phase.c_str());
-  };
-  try {
-    goal_future_ = client_->async_send_goal(goal, options);
-    deadline_ = deadline_after(clock_, action_timeout_s_);
-    return BT::NodeStatus::RUNNING;
-  } catch (const std::exception& error) {
-    record_failure(report_, failure_result("place", "Place goal failed: " + std::string(error.what())));
-    return BT::NodeStatus::FAILURE;
-  }
+  return true;
 }
 
-BT::NodeStatus PlaceNode::onRunning() {
-  if (stage_ == Stage::waiting_goal && goal_future_.wait_for(0s) == std::future_status::ready) {
-    goal_handle_ = goal_future_.get();
-    if (goal_handle_ == nullptr) {
-      record_failure(report_, failure_result("place", "Place goal was rejected"));
-      return BT::NodeStatus::FAILURE;
-    }
-    result_future_ = client_->async_get_result(goal_handle_);
-    stage_ = Stage::waiting_result;
-  }
-  if ((stage_ == Stage::waiting_result || stage_ == Stage::canceling) && result_future_.valid() &&
-      result_future_.wait_for(0s) == std::future_status::ready) {
-    return finish(result_future_.get());
-  }
-  if (clock_->now() >= deadline_) {
-    if (stage_ == Stage::waiting_goal) {
-      record_failure(report_, failure_result("place", "Place goal response timed out"));
-      return BT::NodeStatus::FAILURE;
-    }
-    if (stage_ == Stage::waiting_result) {
-      request_cancel("Place result timed out");
-      return BT::NodeStatus::RUNNING;
-    }
-    return BT::NodeStatus::FAILURE;
-  }
+BT::NodeStatus PlaceNode::onFeedback(const std::shared_ptr<const Feedback> feedback) {
+  report_->phase = feedback->phase;
+  RCLCPP_INFO(logger(), "Place object=%s phase=%s", report_->object_id.c_str(), feedback->phase.c_str());
   return BT::NodeStatus::RUNNING;
 }
 
-void PlaceNode::onHalted() { request_cancel("Place halted"); }
-
-void PlaceNode::request_cancel(const std::string& reason) {
-  record_failure(report_, failure_result("place", reason));
-  if (goal_handle_ != nullptr && stage_ != Stage::canceling) {
-    try {
-      client_->async_cancel_goal(goal_handle_);
-      stage_ = Stage::canceling;
-      deadline_ = deadline_after(clock_, cancel_timeout_s_);
-    } catch (const std::exception& error) {
-      record_failure(report_, failure_result("place", reason + "; cancellation failed: " + error.what()));
-    }
-  }
-}
-
-BT::NodeStatus PlaceNode::finish(const GoalHandle::WrappedResult& wrapped) {
-  const auto status = map_action_result(wrapped, report_);
+BT::NodeStatus PlaceNode::onResultReceived(const WrappedResult& result) {
+  const auto status = report_success_result(report_, result);
   if (status == BT::NodeStatus::SUCCESS) {
     ++report_->completed_jobs;
   }
   return status;
+}
+
+BT::NodeStatus PlaceNode::onFailure(BT::ActionNodeErrorCode error) { return report_error(report_, "place", error); }
+
+BT::NodeStatus PlaceNode::onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
+  return report_failure(report_, "place", error, result);
 }
 
 void register_policy_nodes(BT::BehaviorTreeFactory& factory, AssignmentPlanner planner,

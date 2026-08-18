@@ -15,7 +15,6 @@ struct ExecutiveConfig {
   double readiness_timeout_s = 0.0;
   double detect_timeout_s = 0.0;
   double sync_timeout_s = 0.0;
-  double action_timeout_s = 0.0;
   double cancel_timeout_s = 0.0;
 };
 

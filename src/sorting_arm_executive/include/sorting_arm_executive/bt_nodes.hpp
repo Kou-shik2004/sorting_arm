@@ -11,6 +11,7 @@
 
 #include "behaviortree_cpp/action_node.h"
 #include "behaviortree_cpp/bt_factory.h"
+#include "behaviortree_ros2/bt_action_node.hpp"
 #include "rclcpp/client.hpp"
 #include "rclcpp/clock.hpp"
 #include "rclcpp/logger.hpp"
@@ -128,103 +129,61 @@ class SyncObjectsNode : public BT::StatefulActionNode {
   rclcpp::Time deadline_;
 };
 
-class HomeNode : public BT::StatefulActionNode {
+class HomeNode : public BT::RosActionNode<sorting_arm_interfaces::action::Home> {
  public:
   using Action = sorting_arm_interfaces::action::Home;
-  using GoalHandle = rclcpp_action::ClientGoalHandle<Action>;
 
-  HomeNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
-           double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-           rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
+  HomeNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+           std::shared_ptr<ExecutionReport> report);
 
   static BT::PortsList providedPorts();
 
+  bool setGoal(Goal& goal) override;
+  BT::NodeStatus onFeedback(const std::shared_ptr<const Feedback> feedback) override;
+  BT::NodeStatus onResultReceived(const WrappedResult& result) override;
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error) override;
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) override;
+
  private:
-  enum class Stage { waiting_goal, waiting_result, canceling };
-
-  BT::NodeStatus onStart() override;
-  BT::NodeStatus onRunning() override;
-  void onHalted() override;
-  void request_cancel(const std::string& reason);
-  BT::NodeStatus finish(const GoalHandle::WrappedResult& wrapped);
-
-  rclcpp_action::Client<Action>::SharedPtr client_;
-  double action_timeout_s_ = 0.0;
-  double cancel_timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_;
-  rclcpp::Logger logger_;
-  rclcpp::Clock::SharedPtr clock_;
-  Stage stage_ = Stage::waiting_goal;
-  std::shared_future<GoalHandle::SharedPtr> goal_future_;
-  std::shared_future<GoalHandle::WrappedResult> result_future_;
-  GoalHandle::SharedPtr goal_handle_;
-  rclcpp::Time deadline_;
 };
 
-class PickNode : public BT::StatefulActionNode {
+class PickNode : public BT::RosActionNode<sorting_arm_interfaces::action::Pick> {
  public:
   using Action = sorting_arm_interfaces::action::Pick;
-  using GoalHandle = rclcpp_action::ClientGoalHandle<Action>;
 
-  PickNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
-           double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-           rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
+  PickNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+           std::shared_ptr<ExecutionReport> report);
 
   static BT::PortsList providedPorts();
 
+  bool setGoal(Goal& goal) override;
+  BT::NodeStatus onFeedback(const std::shared_ptr<const Feedback> feedback) override;
+  BT::NodeStatus onResultReceived(const WrappedResult& result) override;
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error) override;
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) override;
+
  private:
-  enum class Stage { waiting_goal, waiting_result, canceling };
-
-  BT::NodeStatus onStart() override;
-  BT::NodeStatus onRunning() override;
-  void onHalted() override;
-  void request_cancel(const std::string& reason);
-  BT::NodeStatus finish(const GoalHandle::WrappedResult& wrapped);
-
-  rclcpp_action::Client<Action>::SharedPtr client_;
-  double action_timeout_s_ = 0.0;
-  double cancel_timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_;
-  rclcpp::Logger logger_;
-  rclcpp::Clock::SharedPtr clock_;
-  Stage stage_ = Stage::waiting_goal;
-  std::shared_future<GoalHandle::SharedPtr> goal_future_;
-  std::shared_future<GoalHandle::WrappedResult> result_future_;
-  GoalHandle::SharedPtr goal_handle_;
-  rclcpp::Time deadline_;
 };
 
-class PlaceNode : public BT::StatefulActionNode {
+class PlaceNode : public BT::RosActionNode<sorting_arm_interfaces::action::Place> {
  public:
   using Action = sorting_arm_interfaces::action::Place;
-  using GoalHandle = rclcpp_action::ClientGoalHandle<Action>;
 
-  PlaceNode(const std::string& name, const BT::NodeConfig& config, rclcpp_action::Client<Action>::SharedPtr client,
-            double action_timeout_s, double cancel_timeout_s, std::shared_ptr<ExecutionReport> report,
-            rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
+  PlaceNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+            std::shared_ptr<ExecutionReport> report);
 
   static BT::PortsList providedPorts();
 
+  bool setGoal(Goal& goal) override;
+  BT::NodeStatus onFeedback(const std::shared_ptr<const Feedback> feedback) override;
+  BT::NodeStatus onResultReceived(const WrappedResult& result) override;
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error) override;
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) override;
+
  private:
-  enum class Stage { waiting_goal, waiting_result, canceling };
-
-  BT::NodeStatus onStart() override;
-  BT::NodeStatus onRunning() override;
-  void onHalted() override;
-  void request_cancel(const std::string& reason);
-  BT::NodeStatus finish(const GoalHandle::WrappedResult& wrapped);
-
-  rclcpp_action::Client<Action>::SharedPtr client_;
-  double action_timeout_s_ = 0.0;
-  double cancel_timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_;
-  rclcpp::Logger logger_;
-  rclcpp::Clock::SharedPtr clock_;
-  Stage stage_ = Stage::waiting_goal;
-  std::shared_future<GoalHandle::SharedPtr> goal_future_;
-  std::shared_future<GoalHandle::WrappedResult> result_future_;
-  GoalHandle::SharedPtr goal_handle_;
-  rclcpp::Time deadline_;
 };
 
 void register_policy_nodes(BT::BehaviorTreeFactory& factory, AssignmentPlanner planner,

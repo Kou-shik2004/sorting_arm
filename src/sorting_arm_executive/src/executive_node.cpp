@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "ament_index_cpp/get_package_share_directory.hpp"
-#include "rclcpp_action/create_client.hpp"
 #include "sorting_arm_executive/bt_nodes.hpp"
 
 namespace sorting_arm_executive {
@@ -41,24 +40,30 @@ ExecutiveNode::ExecutiveNode(const rclcpp::NodeOptions& options) : Node("sorting
   planner_.emplace(config_.destination_slots);
   report_->total_jobs = config_.cycle_object_count;
 
-  home_client_ = rclcpp_action::create_client<sorting_arm_interfaces::action::Home>(this, "home");
-  pick_client_ = rclcpp_action::create_client<sorting_arm_interfaces::action::Pick>(this, "pick");
-  place_client_ = rclcpp_action::create_client<sorting_arm_interfaces::action::Place>(this, "place");
   detect_client_ = create_client<sorting_arm_interfaces::srv::DetectObjects>("detect_objects");
   sync_client_ = create_client<sorting_arm_interfaces::srv::SyncObjects>("sync_objects");
   controller_client_ = create_client<controller_manager_msgs::srv::ListControllers>("/controller_manager/list_controllers");
+}
 
+void ExecutiveNode::initialize() {
   const auto cycle_state = std::make_shared<AdaptiveCycleState>(config_.cycle_object_count);
   register_policy_nodes(factory_, *planner_, cycle_state, report_);
   factory_.registerNodeType<DetectObjectsNode>("DetectObjects", detect_client_, config_.detect_timeout_s, report_,
                                                get_clock());
   factory_.registerNodeType<SyncObjectsNode>("SyncObjects", sync_client_, config_.sync_timeout_s, report_, get_clock());
-  factory_.registerNodeType<HomeNode>("Home", home_client_, config_.action_timeout_s, config_.cancel_timeout_s, report_,
-                                      get_logger(), get_clock());
-  factory_.registerNodeType<PickNode>("Pick", pick_client_, config_.action_timeout_s, config_.cancel_timeout_s, report_,
-                                      get_logger(), get_clock());
-  factory_.registerNodeType<PlaceNode>("Place", place_client_, config_.action_timeout_s, config_.cancel_timeout_s, report_,
-                                       get_logger(), get_clock());
+
+  const auto server_timeout =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(config_.cancel_timeout_s));
+  auto make_params = [this, server_timeout](const std::string& action_name) {
+    BT::RosNodeParams params;
+    params.nh = shared_from_this();
+    params.default_port_value = action_name;
+    params.server_timeout = server_timeout;
+    return params;
+  };
+  factory_.registerNodeType<HomeNode>("Home", make_params("home"), report_);
+  factory_.registerNodeType<PickNode>("Pick", make_params("pick"), report_);
+  factory_.registerNodeType<PlaceNode>("Place", make_params("place"), report_);
 
   const auto tree_path =
       ament_index_cpp::get_package_share_directory("sorting_arm_executive") + "/behavior_trees/sorting_cycle.xml";
@@ -67,7 +72,7 @@ ExecutiveNode::ExecutiveNode(const rclcpp::NodeOptions& options) : Node("sorting
   tree_ = factory_.createTreeFromFile(tree_path, blackboard);
   readiness_deadline_ = deadline_after(config_.readiness_timeout_s);
   timer_ = create_wall_timer(20ms, [this] { tick(); });
-  RCLCPP_INFO(get_logger(), "executive loaded; waiting for controllers and five application endpoints");
+  RCLCPP_INFO(get_logger(), "executive loaded; waiting for controllers and application endpoints");
 }
 
 CycleState ExecutiveNode::cycle_state() const { return state_; }
@@ -111,9 +116,9 @@ void ExecutiveNode::check_readiness() {
     next_controller_query_ = now + 200ms;
   }
 
-  const bool endpoints_ready = home_client_->action_server_is_ready() && pick_client_->action_server_is_ready() &&
-                               place_client_->action_server_is_ready() && detect_client_->service_is_ready() &&
-                               sync_client_->service_is_ready();
+  // Pick/Place/Home live in the same node as sync_objects and are created before it, so
+  // sync readiness stands in for the action servers; RosActionNode covers the rare residual.
+  const bool endpoints_ready = detect_client_->service_is_ready() && sync_client_->service_is_ready();
   if (controllers_ready_ && endpoints_ready) {
     state_ = CycleState::running;
     RCLCPP_INFO(get_logger(), "readiness complete; starting the one sorting cycle");
@@ -128,15 +133,6 @@ void ExecutiveNode::check_readiness() {
     std::string missing;
     if (!controllers_ready_) {
       missing += " controllers";
-    }
-    if (!home_client_->action_server_is_ready()) {
-      missing += " home";
-    }
-    if (!pick_client_->action_server_is_ready()) {
-      missing += " pick";
-    }
-    if (!place_client_->action_server_is_ready()) {
-      missing += " place";
     }
     if (!detect_client_->service_is_ready()) {
       missing += " detect_objects";

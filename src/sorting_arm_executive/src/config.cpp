@@ -50,12 +50,10 @@ ExecutiveConfig load_executive_config(rclcpp::Node& node) {
   config.readiness_timeout_s = node.declare_parameter<double>("readiness_timeout_s");
   config.detect_timeout_s = node.declare_parameter<double>("detect_timeout_s");
   config.sync_timeout_s = node.declare_parameter<double>("sync_timeout_s");
-  config.action_timeout_s = node.declare_parameter<double>("action_timeout_s");
   config.cancel_timeout_s = node.declare_parameter<double>("cancel_timeout_s");
   require_positive("readiness_timeout_s", config.readiness_timeout_s);
   require_positive("detect_timeout_s", config.detect_timeout_s);
   require_positive("sync_timeout_s", config.sync_timeout_s);
-  require_positive("action_timeout_s", config.action_timeout_s);
   require_positive("cancel_timeout_s", config.cancel_timeout_s);
 
   const auto labels = node.declare_parameter<std::vector<std::string>>("destination_slots.labels");
