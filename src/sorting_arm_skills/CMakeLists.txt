@@ -19,23 +19,23 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(control_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(moveit_core REQUIRED)
 find_package(shape_msgs REQUIRED)
-find_package(control_msgs REQUIRED)
-find_package(tf2_eigen REQUIRED)
 find_package(sorting_arm_interfaces REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_task_constructor_core REQUIRED)
 
 add_library(sorting_arm_skills STATIC
   src/helpers.cpp
   src/motion_commander.cpp
   src/scene_manager.cpp
-  src/gripper_commander.cpp
   src/skill_state.cpp
-  src/pick_server.cpp
-  src/place_server.cpp
+  src/gripper_commander.cpp
+  src/mtc_pick_place.cpp
+  src/sort_server.cpp
   src/home_server.cpp
 )
 target_include_directories(sorting_arm_skills PUBLIC
@@ -51,12 +51,15 @@ target_include_directories(sorting_arm_skills PUBLIC
 ament_target_dependencies(sorting_arm_skills PUBLIC
   rclcpp
   rclcpp_action
+  control_msgs
   geometry_msgs
   moveit_msgs
-  control_msgs
-  tf2_eigen
   sorting_arm_interfaces
 )
+# SYSTEM brings MTC's headers in as -isystem, which shields -Werror from MoveIt
+# Task Constructor's own headers (ament_target_dependencies has no PRIVATE, so the
+# link is PUBLIC — harmless, MTC types stay confined to mtc_pick_place.cpp).
+ament_target_dependencies(sorting_arm_skills SYSTEM PUBLIC moveit_task_constructor_core)
 target_link_libraries(sorting_arm_skills PRIVATE shape_msgs::shape_msgs)
 target_link_libraries(sorting_arm_skills PUBLIC
   moveit_core::moveit_collision_detection

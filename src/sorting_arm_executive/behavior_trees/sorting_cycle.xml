@@ -8,8 +8,7 @@
           <DetectObjects expected_count="{expected_count}" objects="{objects}"/>
           <PlanNextJob objects="{objects}" job="{job}" scene_objects="{scene_objects}"/>
           <SyncObjects objects="{scene_objects}"/>
-          <Pick job="{job}"/>
-          <Place job="{job}"/>
+          <Sort job="{job}"/>
           <CommitPlacedJob job="{job}"/>
           <Home name="ReobserveHome"/>
         </Sequence>

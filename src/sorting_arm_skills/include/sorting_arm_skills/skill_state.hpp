@@ -2,20 +2,16 @@
 
 #include <mutex>
 #include <optional>
-#include <string>
 
 namespace sorting_arm {
 
-// Shared state across Pick/Place/Home: one manipulation goal at a time and the
-// object id Pick hands to Place. Each action server owns its own worker.
+// Shared state across Sort/Home: one manipulation goal at a time (D6). Each
+// action server owns its own worker.
 class SkillState {
  public:
   // false if a goal is already running — caller should REJECT the new goal.
   bool try_claim();
   void release();
-
-  std::optional<std::string> attached_object() const;
-  void set_attached_object(std::optional<std::string> object_id);
 
   // Held for the whole sync_objects call, not just this check — SceneManager
   // has no locking of its own, so this lock is what stops a running worker
@@ -25,7 +21,6 @@ class SkillState {
  private:
   mutable std::mutex mutex_;
   bool goal_active_ = false;
-  std::optional<std::string> attached_object_id_;
 };
 
 }  // namespace sorting_arm

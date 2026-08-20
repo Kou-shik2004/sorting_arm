@@ -14,8 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   msg/SkillResult.msg
   srv/DetectObjects.srv
   srv/SyncObjects.srv
-  action/Pick.action
-  action/Place.action
+  action/Sort.action
   action/Home.action
   DEPENDENCIES geometry_msgs
 )

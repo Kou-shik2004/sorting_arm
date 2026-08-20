@@ -1,7 +1,7 @@
 # sorting_arm_skills
 
-Pick, Place, and Home, plus the motion and scene primitives they're built from.
-One node, three action servers.
+Sort (one native MoveIt Task Constructor pick-and-place task) and Home, plus the
+motion and scene primitives they're built from. One node, two action servers.
 
 ## Running it
 
@@ -13,10 +13,10 @@ or `app.launch.xml` brings up `skill_server_node` alongside Gazebo. With
 ros2 action send_goal /home sorting_arm_interfaces/action/Home {}
 ```
 
-Pick and Place both act on an object already pushed into the planning scene by
-`/sync_objects`, so driving them by hand means calling that service first with a
-`DetectedObject` for whatever you want to pick. The easier path is the scripted
-four-cube demo, which does the sync for you:
+Sort acts on an object already pushed into the planning scene by `/sync_objects`,
+so driving it by hand means calling that service first with a `DetectedObject` for
+whatever you want to sort. The easier path is the scripted four-cube demo, which
+does the sync for you:
 
 ```bash
 ros2 run sorting_arm_skills sequence_demo --ros-args --params-file \
@@ -42,5 +42,5 @@ takes its own set of targets.
 
 | File | Controls |
 |---|---|
-| `config/skills.yaml` | Planning timeouts and scaling, Cartesian step size, gripper timing, pre-grasp candidate limits, and the table/tray collision geometry Pick and Place check against. The tray and table geometry is measured from `sorting_arm_bringup/worlds/sorting_cell.sdf`; if the world changes, these need re-measuring. |
+| `config/skills.yaml` | Planning timeouts and scaling, Cartesian step size, MTC solution count, grasp geometry (offset, yaw delta, approach/retreat heights), and the table/tray collision geometry the MTC task checks against. The tray and table geometry is measured from `sorting_arm_bringup/worlds/sorting_cell.sdf`; if the world changes, these need re-measuring. |
 | `config/sequence_demo.yaml` | The four-cube catalogue `sequence_demo` drives: object poses, sizes, and destinations. |

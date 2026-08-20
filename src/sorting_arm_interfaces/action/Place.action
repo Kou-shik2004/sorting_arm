@@ -1,9 +1,0 @@
-# Long-running, cancellable place of the currently-attached object at a
-# destination centre pose chosen by the executive's slot allocation.
-
-string object_id
-geometry_msgs/PoseStamped destination
----
-SkillResult result
----
-string phase

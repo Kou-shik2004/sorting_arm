@@ -1,7 +1,0 @@
-# Long-running, cancellable pick of one previously-synced object (D4).
-
-string object_id
----
-SkillResult result
----
-string phase

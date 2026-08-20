@@ -1,0 +1,10 @@
+# One-shot, cancellable pick-and-place of one previously-synced object: grasp it
+# and place it at a destination centre pose chosen by the executive's allocation.
+# Pick and place are one coupled MTC task, so they share one action (D31).
+
+string object_id
+geometry_msgs/PoseStamped destination
+---
+SkillResult result
+---
+string phase

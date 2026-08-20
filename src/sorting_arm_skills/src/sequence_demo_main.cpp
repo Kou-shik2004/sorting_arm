@@ -10,8 +10,7 @@
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "shape_msgs/msg/solid_primitive.hpp"
 #include "sorting_arm_interfaces/action/home.hpp"
-#include "sorting_arm_interfaces/action/pick.hpp"
-#include "sorting_arm_interfaces/action/place.hpp"
+#include "sorting_arm_interfaces/action/sort.hpp"
 #include "sorting_arm_interfaces/msg/detected_object.hpp"
 #include "sorting_arm_interfaces/srv/sync_objects.hpp"
 
@@ -32,14 +31,13 @@ struct ObjectSpec {
 
 struct ObjectOutcome {
   std::string id;
-  bool pick_ok = false;
-  bool place_ok = false;
+  bool sort_ok = false;
   std::string message;
 };
 
-// Home/Pick/Place all mirror the same shape (empty-or-simple goal, SkillResult
-// result, string phase feedback), so one send/wait/log path covers all three —
-// no shared library needed, this is the only caller.
+// Home/Sort mirror the same shape (empty-or-simple goal, SkillResult result,
+// string phase feedback), so one send/wait/log path covers both — no shared
+// library needed, this is the only caller.
 template <typename ActionT>
 bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_action::Client<ActionT>::SharedPtr& client,
                 const typename ActionT::Goal& goal, double timeout_s, const std::string& label,
@@ -92,14 +90,13 @@ bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_actio
 }
 
 // Hand-run verification harness, same mould as motion_demo: sync every
-// configured object, home, then pick+place each in order, home again, print a
+// configured object, home, then sort each in order, home again, print a
 // summary. No routing policy, no recovery — destinations come entirely from
 // config. Step 12's sorting_arm_executive replaces this; it doesn't extend it.
 class SequenceDemo {
  public:
   using Home = sorting_arm_interfaces::action::Home;
-  using Pick = sorting_arm_interfaces::action::Pick;
-  using Place = sorting_arm_interfaces::action::Place;
+  using Sort = sorting_arm_interfaces::action::Sort;
   using SyncObjects = sorting_arm_interfaces::srv::SyncObjects;
 
   explicit SequenceDemo(rclcpp::Node::SharedPtr node) : node_(std::move(node)) {
@@ -128,8 +125,7 @@ class SequenceDemo {
 
     sync_client_ = node_->create_client<SyncObjects>("sync_objects");
     home_client_ = rclcpp_action::create_client<Home>(node_, "home");
-    pick_client_ = rclcpp_action::create_client<Pick>(node_, "pick");
-    place_client_ = rclcpp_action::create_client<Place>(node_, "place");
+    sort_client_ = rclcpp_action::create_client<Sort>(node_, "sort");
   }
 
   bool run() {
@@ -138,9 +134,8 @@ class SequenceDemo {
       RCLCPP_ERROR(node_->get_logger(), "sync_objects service unavailable");
       return false;
     }
-    if (!home_client_->wait_for_action_server(wait_timeout) || !pick_client_->wait_for_action_server(wait_timeout) ||
-        !place_client_->wait_for_action_server(wait_timeout)) {
-      RCLCPP_ERROR(node_->get_logger(), "home/pick/place action server unavailable");
+    if (!home_client_->wait_for_action_server(wait_timeout) || !sort_client_->wait_for_action_server(wait_timeout)) {
+      RCLCPP_ERROR(node_->get_logger(), "home/sort action server unavailable");
       return false;
     }
 
@@ -159,30 +154,19 @@ class SequenceDemo {
       ObjectOutcome outcome;
       outcome.id = spec.id;
 
-      Pick::Goal pick_goal;
-      pick_goal.object_id = spec.id;
-      sorting_arm_interfaces::msg::SkillResult pick_result;
-      outcome.pick_ok = run_action<Pick>(node_, pick_client_, pick_goal, result_timeout_s_, "pick " + spec.id, pick_result);
-      outcome.message = pick_result.message;
-
-      if (outcome.pick_ok) {
-        Place::Goal place_goal;
-        place_goal.object_id = spec.id;
-        place_goal.destination.header.frame_id = "world";
-        place_goal.destination.pose.position.x = spec.destination_x;
-        place_goal.destination.pose.position.y = spec.destination_y;
-        place_goal.destination.pose.position.z = spec.destination_z;
-        place_goal.destination.pose.orientation.w = 1.0;
-        sorting_arm_interfaces::msg::SkillResult place_result;
-        outcome.place_ok =
-            run_action<Place>(node_, place_client_, place_goal, result_timeout_s_, "place " + spec.id, place_result);
-        if (!outcome.place_ok) {
-          outcome.message = place_result.message;
-        }
-      }
+      Sort::Goal sort_goal;
+      sort_goal.object_id = spec.id;
+      sort_goal.destination.header.frame_id = "world";
+      sort_goal.destination.pose.position.x = spec.destination_x;
+      sort_goal.destination.pose.position.y = spec.destination_y;
+      sort_goal.destination.pose.position.z = spec.destination_z;
+      sort_goal.destination.pose.orientation.w = 1.0;
+      sorting_arm_interfaces::msg::SkillResult sort_result;
+      outcome.sort_ok = run_action<Sort>(node_, sort_client_, sort_goal, result_timeout_s_, "sort " + spec.id, sort_result);
+      outcome.message = sort_result.message;
 
       outcomes.push_back(outcome);
-      if (!(outcome.pick_ok && outcome.place_ok)) {
+      if (!outcome.sort_ok) {
         all_ok = false;
         if (stop_on_failure_) {
           break;
@@ -229,8 +213,8 @@ class SequenceDemo {
   void print_summary(const std::vector<ObjectOutcome>& outcomes) const {
     RCLCPP_INFO(node_->get_logger(), "sequence summary:");
     for (const auto& outcome : outcomes) {
-      RCLCPP_INFO(node_->get_logger(), "  %s: pick=%s place=%s %s", outcome.id.c_str(), outcome.pick_ok ? "ok" : "FAIL",
-                  outcome.place_ok ? "ok" : "FAIL", outcome.message.c_str());
+      RCLCPP_INFO(node_->get_logger(), "  %s: sort=%s %s", outcome.id.c_str(), outcome.sort_ok ? "ok" : "FAIL",
+                  outcome.message.c_str());
     }
   }
 
@@ -240,8 +224,7 @@ class SequenceDemo {
   bool stop_on_failure_ = true;
   rclcpp::Client<SyncObjects>::SharedPtr sync_client_;
   rclcpp_action::Client<Home>::SharedPtr home_client_;
-  rclcpp_action::Client<Pick>::SharedPtr pick_client_;
-  rclcpp_action::Client<Place>::SharedPtr place_client_;
+  rclcpp_action::Client<Sort>::SharedPtr sort_client_;
 };
 
 int main(int argc, char* argv[]) {

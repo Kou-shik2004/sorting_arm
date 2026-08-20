@@ -5,9 +5,6 @@
 #include <utility>
 #include <vector>
 
-#include "moveit/robot_state/conversions.hpp"
-#include "moveit/robot_state/robot_state.hpp"
-#include "moveit/robot_trajectory/robot_trajectory.hpp"
 #include "moveit_msgs/msg/move_it_error_codes.hpp"
 #include "moveit_msgs/msg/robot_trajectory.hpp"
 
@@ -74,31 +71,6 @@ SkillResult MotionCommander::move_to_pose(const geometry_msgs::msg::PoseStamped&
   return plan_and_execute("pose_motion", "pose planning failed", "pose execution failed");
 }
 
-geometry_msgs::msg::PoseStamped MotionCommander::current_tcp_pose() const { return arm_.getCurrentPose("tcp"); }
-
-SkillResult MotionCommander::plan_pose_candidate(const geometry_msgs::msg::PoseStamped& target,
-                                                 PreparedPoseMotion& prepared) {
-  if (!arm_.setPoseTarget(target)) {
-    return skill_error("pre_grasp", "setPoseTarget rejected the target");
-  }
-  arm_.setStartStateToCurrentState();
-
-  MoveGroupInterface::Plan plan;
-  const auto plan_result = arm_.plan(plan);
-  if (!plan_result) {
-    return skill_error("pre_grasp", "pre-grasp candidate planning failed", plan_result.val);
-  }
-
-  moveit::core::RobotState start_state(arm_.getRobotModel());
-  moveit::core::robotStateMsgToRobotState(plan.start_state, start_state);
-  robot_trajectory::RobotTrajectory robot_traj(arm_.getRobotModel(), "arm");
-  robot_traj.setRobotTrajectoryMsg(start_state, plan.trajectory);
-
-  prepared.plan = std::move(plan);
-  prepared.terminal_state = std::make_shared<moveit::core::RobotState>(robot_traj.getLastWayPoint());
-  return skill_ok("pre_grasp");
-}
-
 SkillResult MotionCommander::compute_cartesian_path(const moveit::core::RobotState& start_state,
                                                     const geometry_msgs::msg::PoseStamped& target, const std::string& phase,
                                                     moveit_msgs::msg::RobotTrajectory& trajectory_msg) {
@@ -118,38 +90,6 @@ SkillResult MotionCommander::compute_cartesian_path(const moveit::core::RobotSta
 
 bool MotionCommander::accept_cartesian_fraction(double fraction) const {
   return std::isfinite(fraction) && fraction >= min_fraction_;
-}
-
-SkillResult MotionCommander::plan_cartesian_from(const PreparedPoseMotion& start,
-                                                 const geometry_msgs::msg::PoseStamped& target,
-                                                 PreparedCartesianMotion& prepared) {
-  moveit_msgs::msg::RobotTrajectory trajectory_msg;
-  const auto compute_result = compute_cartesian_path(*start.terminal_state, target, "descend_preflight", trajectory_msg);
-  if (!compute_result.ok) {
-    return compute_result;
-  }
-
-  MoveGroupInterface::Plan plan;
-  moveit::core::robotStateToRobotStateMsg(*start.terminal_state, plan.start_state);
-  plan.trajectory = trajectory_msg;
-  prepared.plan = std::move(plan);
-  return skill_ok("descend_preflight");
-}
-
-SkillResult MotionCommander::execute_prepared_pose(const PreparedPoseMotion& prepared) {
-  const auto exec_result = arm_.execute(prepared.plan);
-  if (!exec_result) {
-    return skill_error("pre_grasp", "pre-grasp execution failed", exec_result.val);
-  }
-  return skill_ok("pre_grasp");
-}
-
-SkillResult MotionCommander::execute_prepared_cartesian(const PreparedCartesianMotion& prepared) {
-  const auto exec_result = arm_.execute(prepared.plan);
-  if (!exec_result) {
-    return skill_error("descend", "cartesian execution failed", exec_result.val);
-  }
-  return skill_ok("descend");
 }
 
 SkillResult MotionCommander::move_cartesian_to(const geometry_msgs::msg::PoseStamped& target) {

@@ -16,6 +16,10 @@ ros-jazzy-launch-testing
 ros-jazzy-launch-testing-ament-cmake
 ros-jazzy-launch-testing-ros
 ros-jazzy-moveit
+ros-jazzy-moveit-task-constructor-capabilities
+ros-jazzy-moveit-task-constructor-core
+ros-jazzy-moveit-task-constructor-msgs
+ros-jazzy-moveit-task-constructor-visualization
 ros-jazzy-moveit-visual-tools
 ros-jazzy-pilz-industrial-motion-planner
 ros-jazzy-position-controllers

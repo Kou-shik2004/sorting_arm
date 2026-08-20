@@ -20,8 +20,7 @@ from sensor_msgs.msg import CameraInfo
 from sensor_msgs.msg import Image
 from sensor_msgs.msg import JointState
 from sorting_arm_interfaces.action import Home
-from sorting_arm_interfaces.action import Pick
-from sorting_arm_interfaces.action import Place
+from sorting_arm_interfaces.action import Sort
 from sorting_arm_interfaces.srv import DetectObjects
 from sorting_arm_interfaces.srv import SyncObjects
 
@@ -210,8 +209,7 @@ class TestHeadlessRuntime(unittest.TestCase):
     def _wait_for_application_endpoints(self, deadline):
         action_clients = (
             ActionClient(self.node, Home, '/home'),
-            ActionClient(self.node, Pick, '/pick'),
-            ActionClient(self.node, Place, '/place'),
+            ActionClient(self.node, Sort, '/sort'),
         )
         service_clients = (
             self.node.create_client(DetectObjects, '/detect_objects'),
@@ -236,7 +234,7 @@ class TestHeadlessRuntime(unittest.TestCase):
             for client in service_clients:
                 self.node.destroy_client(client)
 
-        self.fail('The five required application endpoints did not become ready')
+        self.fail('The four required application endpoints did not become ready')
 
     def _wait_for_camera_stream(self, deadline):
         images = []

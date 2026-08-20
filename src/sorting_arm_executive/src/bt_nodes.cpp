@@ -328,54 +328,20 @@ BT::NodeStatus HomeNode::onFailure(BT::ActionNodeErrorCode error, const std::opt
   return report_failure(report_, "home", error, result);
 }
 
-PickNode::PickNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+SortNode::SortNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
                    std::shared_ptr<ExecutionReport> report)
     : BT::RosActionNode<Action>(name, config, params), report_(std::move(report)) {}
 
-BT::PortsList PickNode::providedPorts() { return providedBasicPorts({BT::InputPort<SortJob>("job")}); }
+BT::PortsList SortNode::providedPorts() { return providedBasicPorts({BT::InputPort<SortJob>("job")}); }
 
-bool PickNode::setGoal(Goal& goal) {
+bool SortNode::setGoal(Goal& goal) {
   SortJob job;
   const auto input = getInput("job", job);
   if (!input) {
-    record_failure(report_, failure_result("pick", input.error()));
+    record_failure(report_, failure_result("sort", input.error()));
     return false;
   }
-  report_->operation = "Pick";
-  report_->object_id = job.object_id;
-  report_->phase.clear();
-  goal.object_id = job.object_id;
-  return true;
-}
-
-BT::NodeStatus PickNode::onFeedback(const std::shared_ptr<const Feedback> feedback) {
-  report_->phase = feedback->phase;
-  RCLCPP_INFO(logger(), "Pick object=%s phase=%s", report_->object_id.c_str(), feedback->phase.c_str());
-  return BT::NodeStatus::RUNNING;
-}
-
-BT::NodeStatus PickNode::onResultReceived(const WrappedResult& result) { return report_success_result(report_, result); }
-
-BT::NodeStatus PickNode::onFailure(BT::ActionNodeErrorCode error) { return report_error(report_, "pick", error); }
-
-BT::NodeStatus PickNode::onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
-  return report_failure(report_, "pick", error, result);
-}
-
-PlaceNode::PlaceNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
-                     std::shared_ptr<ExecutionReport> report)
-    : BT::RosActionNode<Action>(name, config, params), report_(std::move(report)) {}
-
-BT::PortsList PlaceNode::providedPorts() { return providedBasicPorts({BT::InputPort<SortJob>("job")}); }
-
-bool PlaceNode::setGoal(Goal& goal) {
-  SortJob job;
-  const auto input = getInput("job", job);
-  if (!input) {
-    record_failure(report_, failure_result("place", input.error()));
-    return false;
-  }
-  report_->operation = "Place";
+  report_->operation = "Sort";
   report_->object_id = job.object_id;
   report_->phase.clear();
   goal.object_id = job.object_id;
@@ -383,13 +349,13 @@ bool PlaceNode::setGoal(Goal& goal) {
   return true;
 }
 
-BT::NodeStatus PlaceNode::onFeedback(const std::shared_ptr<const Feedback> feedback) {
+BT::NodeStatus SortNode::onFeedback(const std::shared_ptr<const Feedback> feedback) {
   report_->phase = feedback->phase;
-  RCLCPP_INFO(logger(), "Place object=%s phase=%s", report_->object_id.c_str(), feedback->phase.c_str());
+  RCLCPP_INFO(logger(), "Sort object=%s phase=%s", report_->object_id.c_str(), feedback->phase.c_str());
   return BT::NodeStatus::RUNNING;
 }
 
-BT::NodeStatus PlaceNode::onResultReceived(const WrappedResult& result) {
+BT::NodeStatus SortNode::onResultReceived(const WrappedResult& result) {
   const auto status = report_success_result(report_, result);
   if (status == BT::NodeStatus::SUCCESS) {
     ++report_->completed_jobs;
@@ -397,10 +363,10 @@ BT::NodeStatus PlaceNode::onResultReceived(const WrappedResult& result) {
   return status;
 }
 
-BT::NodeStatus PlaceNode::onFailure(BT::ActionNodeErrorCode error) { return report_error(report_, "place", error); }
+BT::NodeStatus SortNode::onFailure(BT::ActionNodeErrorCode error) { return report_error(report_, "sort", error); }
 
-BT::NodeStatus PlaceNode::onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
-  return report_failure(report_, "place", error, result);
+BT::NodeStatus SortNode::onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
+  return report_failure(report_, "sort", error, result);
 }
 
 void register_policy_nodes(BT::BehaviorTreeFactory& factory, AssignmentPlanner planner,

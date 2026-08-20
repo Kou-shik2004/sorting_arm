@@ -62,8 +62,7 @@ void ExecutiveNode::initialize() {
     return params;
   };
   factory_.registerNodeType<HomeNode>("Home", make_params("home"), report_);
-  factory_.registerNodeType<PickNode>("Pick", make_params("pick"), report_);
-  factory_.registerNodeType<PlaceNode>("Place", make_params("place"), report_);
+  factory_.registerNodeType<SortNode>("Sort", make_params("sort"), report_);
 
   // build the tree only after readiness (see check_readiness) - each RosActionNode probes its
   // server in its constructor, so building here would log "not reachable" before the servers are up

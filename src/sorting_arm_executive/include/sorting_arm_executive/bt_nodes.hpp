@@ -19,8 +19,7 @@
 #include "rclcpp_action/client.hpp"
 #include "sorting_arm_executive/assignment_planner.hpp"
 #include "sorting_arm_interfaces/action/home.hpp"
-#include "sorting_arm_interfaces/action/pick.hpp"
-#include "sorting_arm_interfaces/action/place.hpp"
+#include "sorting_arm_interfaces/action/sort.hpp"
 #include "sorting_arm_interfaces/msg/detected_object.hpp"
 #include "sorting_arm_interfaces/srv/detect_objects.hpp"
 #include "sorting_arm_interfaces/srv/sync_objects.hpp"
@@ -148,31 +147,12 @@ class HomeNode : public BT::RosActionNode<sorting_arm_interfaces::action::Home> 
   std::shared_ptr<ExecutionReport> report_;
 };
 
-class PickNode : public BT::RosActionNode<sorting_arm_interfaces::action::Pick> {
+class SortNode : public BT::RosActionNode<sorting_arm_interfaces::action::Sort> {
  public:
-  using Action = sorting_arm_interfaces::action::Pick;
+  using Action = sorting_arm_interfaces::action::Sort;
 
-  PickNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+  SortNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
            std::shared_ptr<ExecutionReport> report);
-
-  static BT::PortsList providedPorts();
-
-  bool setGoal(Goal& goal) override;
-  BT::NodeStatus onFeedback(const std::shared_ptr<const Feedback> feedback) override;
-  BT::NodeStatus onResultReceived(const WrappedResult& result) override;
-  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error) override;
-  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) override;
-
- private:
-  std::shared_ptr<ExecutionReport> report_;
-};
-
-class PlaceNode : public BT::RosActionNode<sorting_arm_interfaces::action::Place> {
- public:
-  using Action = sorting_arm_interfaces::action::Place;
-
-  PlaceNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
-            std::shared_ptr<ExecutionReport> report);
 
   static BT::PortsList providedPorts();
 

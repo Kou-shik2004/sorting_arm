@@ -5,13 +5,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-import yaml
-
-
-def load_yaml(package_name, relative_path):
-    absolute_path = os.path.join(get_package_share_directory(package_name), relative_path)
-    with open(absolute_path, 'r', encoding='utf-8') as yaml_file:
-        return yaml.safe_load(yaml_file)
+from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def generate_launch_description():
@@ -21,17 +15,19 @@ def generate_launch_description():
             get_package_share_directory('sorting_arm_skills'), 'config', 'skills.yaml'),
     )
 
-    # skill_server_node builds its own MoveGroupInterface robot model; without this
-    # it only sees the URDF's limits, not sorting_arm_moveit's joint_limits.yaml overrides.
-    robot_description_planning = {
-        'robot_description_planning': load_yaml('sorting_arm_moveit', 'config/joint_limits.yaml')
-    }
+    # skill_server_node now builds an MTC task: task.loadRobotModel + PipelinePlanner
+    # (OMPL) + ComputeIK (kinematics) all read these params off the node, so it needs
+    # the same full MoveIt config move_group gets (URDF, SRDF, kinematics, planning
+    # pipelines, joint limits), not just the joint-limits override it used before.
+    moveit_config = MoveItConfigsBuilder(
+        'sorting_arm', package_name='sorting_arm_moveit'
+    ).to_moveit_configs()
 
     skill_server_node = Node(
         package='sorting_arm_skills',
         executable='skill_server_node',
         output='screen',
-        parameters=[LaunchConfiguration('skills_config'), robot_description_planning],
+        parameters=[moveit_config.to_dict(), LaunchConfiguration('skills_config')],
     )
 
     return LaunchDescription([skills_config_arg, skill_server_node])

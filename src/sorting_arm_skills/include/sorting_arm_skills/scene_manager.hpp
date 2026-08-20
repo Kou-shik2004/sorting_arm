@@ -7,10 +7,7 @@
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "moveit/planning_scene_interface/planning_scene_interface.hpp"
-#include "moveit_msgs/msg/allowed_collision_matrix.hpp"
 #include "moveit_msgs/msg/collision_object.hpp"
-#include "moveit_msgs/srv/get_planning_scene.hpp"
-#include "rclcpp/client.hpp"
 #include "rclcpp/node.hpp"
 #include "sorting_arm_interfaces/msg/detected_object.hpp"
 #include "sorting_arm_skills/types.hpp"
@@ -18,7 +15,9 @@
 namespace sorting_arm {
 
 // Owns the one PlanningSceneInterface for the whole process (D6). Scene
-// mutations use MoveIt's synchronous apply calls, never timing sleeps.
+// mutations use MoveIt's synchronous apply calls, never timing sleeps. Grasp
+// attach/detach and grasp-contact allowances now live inside the MTC task and
+// its scene diffs (D31), not here.
 class SceneManager {
  public:
   explicit SceneManager(rclcpp::Node::SharedPtr node);
@@ -31,17 +30,9 @@ class SceneManager {
   // object in `objects`, removes any stale id. Never touches table/tray.
   SkillResult sync_objects(const std::vector<sorting_arm_interfaces::msg::DetectedObject>& objects);
 
-  // Attaches a previously-synced object to the tcp link.
-  SkillResult attach_at_pose(const std::string& object_id, const geometry_msgs::msg::PoseStamped& object_centre);
-
-  // we allow only the target/touch-link pairs near grasp, then restore the
-  // exact matrix so table and pedestal checks never disappear
-  SkillResult begin_grasp_contacts(const std::string& object_id);
-  SkillResult end_grasp_contacts();
-
-  // Detaches and reinserts the object at placed_centre using its originally
-  // synced geometry.
-  SkillResult detach_and_place(const std::string& object_id, const geometry_msgs::msg::PoseStamped& placed_centre);
+  // Ids of the static support surfaces (table and both trays) a grasped object
+  // may rest against.
+  std::vector<std::string> support_surface_ids() const;
 
   // World-frame centre and half-height of a synced dynamic object, or nullopt
   // if the object has not been synced.
@@ -53,19 +44,12 @@ class SceneManager {
 
  private:
   moveit_msgs::msg::CollisionObject load_box_set(const std::string& prefix);
-  SkillResult query_allowed_collision_matrix(moveit_msgs::msg::AllowedCollisionMatrix& matrix);
-  SkillResult apply_allowed_collision_matrix(const moveit_msgs::msg::AllowedCollisionMatrix& matrix,
-                                             const std::string& operation);
 
   rclcpp::Node::SharedPtr node_;
-  double service_timeout_s_ = 0.0;
 
   std::vector<moveit_msgs::msg::CollisionObject> static_objects_;
 
   moveit::planning_interface::PlanningSceneInterface scene_interface_;
-  rclcpp::Client<moveit_msgs::srv::GetPlanningScene>::SharedPtr get_scene_client_;
-
-  std::optional<moveit_msgs::msg::AllowedCollisionMatrix> grasp_contacts_baseline_;
 
   // Geometry of every object this manager has synced, keyed by id — populated
   // by sync_objects(), never by configuration.

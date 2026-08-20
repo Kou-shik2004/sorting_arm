@@ -1,7 +1,7 @@
 # sorting_arm_executive
 
-The BehaviorTree that runs one detect-pick-place-home cycle, plus a fixed-pose
-object provider for testing the cycle without a camera in the loop.
+The BehaviorTree that runs one detect-sort-home cycle, plus a fixed-pose object
+provider for testing the cycle without a camera in the loop.
 
 ## Running it
 
@@ -29,5 +29,5 @@ cycle.
 | `fixed_objects` | The object poses `fixed_object_provider` reports. Only read when `use_camera_provider:=false`. |
 | `*_timeout_s` | How long the tree waits on each step (readiness, detection, sync, an action, a cancel) before treating it as failed. |
 
-`behavior_trees/sorting_cycle.xml` is the tree itself, detect, sync, then Pick and
-Place per object, then Home.
+`behavior_trees/sorting_cycle.xml` is the tree itself, detect, sync, then Sort
+per object, then Home.
