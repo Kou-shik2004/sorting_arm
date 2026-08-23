@@ -13,7 +13,6 @@
 #include "moveit/task_constructor/stages.h"
 #include "moveit/task_constructor/task.h"
 #include "moveit/trajectory_processing/time_optimal_trajectory_generation.hpp"
-#include "sorting_arm_skills/helpers.hpp"
 
 namespace sorting_arm {
 
@@ -41,8 +40,7 @@ class StoppedBoundaryTimeParameterization final : public trajectory_processing::
       return false;
     }
 
-    // Each MTC stage is a separate controller goal, so Cartesian stages stop at both boundaries.
-    // Jazzy TOTG can leave numerical boundary derivatives that violate that contract.
+    // each stage is its own controller goal and must stop at both ends; TOTG can leave nonzero boundary derivatives
     const auto& variable_indices = trajectory.getGroup()->getVariableIndexList();
     for (auto* waypoint : {trajectory.getFirstWayPointPtr().get(), trajectory.getLastWayPointPtr().get()}) {
       for (const int variable_index : variable_indices) {
@@ -54,7 +52,7 @@ class StoppedBoundaryTimeParameterization final : public trajectory_processing::
   }
 };
 
-// tcp z points down at the object; z holds the grasp height the old code used
+// tcp z points down at the object; the translation sets the grasp depth
 Eigen::Isometry3d grasp_frame_transform(double half_height_m, double grasp_offset_m) {
   Eigen::Isometry3d transform = Eigen::Isometry3d::Identity();
   transform.linear() = Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
@@ -71,9 +69,7 @@ geometry_msgs::msg::Vector3Stamped axis(const std::string& frame_id, double x, d
   return vector;
 }
 
-// one active knuckle joint mimic-drives all 8 gripper links, so no group query
-// returns them (moveit's JMG only walks joint_roots' descendants) — walk the
-// kinematic subtree from the gripper base instead
+// the SRDF gripper group holds one joint, so its JMG misses the mimic-driven links; walk the subtree instead
 std::vector<std::string> gripper_collision_links(const moveit::core::RobotModelConstPtr& robot_model) {
   std::vector<std::string> links;
   const auto* base_joint = robot_model->getLinkModel("robotiq_85_base_link")->getParentJointModel();
@@ -103,10 +99,7 @@ std::shared_ptr<mtc::solvers::CartesianPath> make_cartesian_planner(double veloc
   return planner;
 }
 
-// task properties + current state, shared by both tasks. Returns the
-// current-state stage so a generator can monitor it. Mimic normalization is a
-// separate stage each task places for itself — the place task must allow the
-// grasp contact before this collision-checking stage runs.
+// shared task properties + current state; returns the current-state stage for a generator to monitor
 mtc::Stage* add_task_prefix(mtc::Task& task, const rclcpp::Node::SharedPtr& node) {
   task.loadRobotModel(node);
   task.setProperty("group", kArmGroup);
@@ -120,9 +113,7 @@ mtc::Stage* add_task_prefix(mtc::Task& task, const rclcpp::Node::SharedPtr& node
   return current_ptr;
 }
 
-// Gazebo doesn't hold the URDF mimic joints exactly; the drift crosses MTC Connect's
-// 1e-4 tolerance after a few cycles, so rewrite each follower from its master. This
-// stage collision-checks its output, so it must run after any needed ACM allowance.
+// the reported mimic joints drift from their master; rewrite each follower so Connect sees a consistent state
 std::unique_ptr<mtc::stages::ModifyPlanningScene> make_normalize_mimics() {
   auto mimics = std::make_unique<mtc::stages::ModifyPlanningScene>("normalize gripper mimics");
   mimics->setCallback([](const planning_scene::PlanningScenePtr& scene, const mtc::PropertyMap&) {
@@ -154,8 +145,7 @@ MtcPickPlace::MtcPickPlace(rclcpp::Node::SharedPtr node, std::vector<std::string
   max_solutions_ = declare_or_get<int>(*node_, "mtc.max_solutions", 10);
 }
 
-// Task A: reach the pick and descend onto the grasp, jaws open. Ends at the
-// grasp pose so our GripperCommander::close() runs next.
+// Task A: reach and descend onto the grasp with jaws open, ending where GripperCommander::close() runs next
 std::shared_ptr<mtc::Task> MtcPickPlace::build_reach_task(const std::string& object_id, double half_height_m) {
   auto task = std::make_shared<mtc::Task>();
   task->stages()->setName("reach " + object_id);
@@ -197,7 +187,7 @@ std::shared_ptr<mtc::Task> MtcPickPlace::build_reach_task(const std::string& obj
       generator->setPreGraspPose(kOpenState);
       generator->setObject(object_id);
       generator->setAngleDelta(grasp_angle_delta_rad_);
-      // the native open stage is gone; monitor the current state instead
+      // no open stage precedes this, so monitor the current state
       generator->setMonitoredStage(current_ptr);
 
       auto wrapper = std::make_unique<mtc::stages::ComputeIK>("grasp ik", std::move(generator));
@@ -215,8 +205,7 @@ std::shared_ptr<mtc::Task> MtcPickPlace::build_reach_task(const std::string& obj
   return task;
 }
 
-// Task B: the object is physically grasped. Attach it, lift, move to the place,
-// lower, release (native), detach, and retreat.
+// Task B: object already grasped — attach, lift, move, lower, release, detach, retreat
 std::shared_ptr<mtc::Task> MtcPickPlace::build_place_task(const std::string& object_id,
                                                           const geometry_msgs::msg::PoseStamped& destination) {
   auto task = std::make_shared<mtc::Task>();
@@ -229,8 +218,7 @@ std::shared_ptr<mtc::Task> MtcPickPlace::build_place_task(const std::string& obj
   auto interpolation_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
 
   {
-    // the grasp closed onto the cube and the cube rests on its support, so allow
-    // both contacts before attach/lift
+    // object touches the closed jaws and its support; allow both before any collision-checking stage
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("allow grasp collisions");
     stage->allowCollisions(object_id, gripper_collision_links(task->getRobotModel()), true);
     stage->allowCollisions(object_id, support_surfaces_, true);
@@ -239,7 +227,7 @@ std::shared_ptr<mtc::Task> MtcPickPlace::build_place_task(const std::string& obj
 
   task->add(make_normalize_mimics());
 
-  // kept so GeneratePlacePose monitors the grasp that was attached
+  // GeneratePlacePose monitors this attach stage
   mtc::Stage* attach_stage_ptr = nullptr;
   {
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");

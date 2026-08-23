@@ -15,9 +15,8 @@
 
 namespace sorting_arm {
 
-// The Sort action server: one native MTC task grasps a synced object and places
-// it at a destination (D31). Shares `state` with Home so only one goal runs at a
-// time; cancellation preempts the in-flight MTC plan.
+// Sort action server: an MTC task grasps a synced object and places it (D31).
+// Shares `state` with Home; cancel preempts the in-flight plan.
 class SortServerNode {
  public:
   SortServerNode(rclcpp::Node::SharedPtr node, MtcPickPlace& planner, SceneManager& scene, SkillState& state);
@@ -31,7 +30,7 @@ class SortServerNode {
   void handle_accepted(std::shared_ptr<GoalHandle> goal_handle);
   void run(std::shared_ptr<GoalHandle> goal_handle);
 
-  // Plan then execute the MTC task, publishing a coarse phase around each.
+  // Runs the MTC pick-and-place, publishing a phase around each step.
   SkillResult sort_object(const std::string& object_id, double half_height_m,
                           const geometry_msgs::msg::PoseStamped& destination, std::shared_ptr<Sort::Feedback> feedback,
                           std::shared_ptr<GoalHandle> goal_handle);
@@ -43,8 +42,7 @@ class SortServerNode {
 
   rclcpp_action::Server<Sort>::SharedPtr server_;
 
-  // Declared last so destruction joins the worker before any borrowed
-  // dependency is destroyed by skill_server_main.cpp.
+  // Declared last so its destructor joins the worker before borrowed deps die.
   std::jthread worker_;
 };
 

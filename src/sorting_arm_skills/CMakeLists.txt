@@ -5,8 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# -Wpedantic/-Wnon-virtual-dtor/-Woverloaded-virtual dropped: this package has no
-# virtual dispatch left and pedantic never caught a real bug here either.
+# no virtual dispatch here, so -Wpedantic/-Wnon-virtual-dtor/-Woverloaded-virtual are dropped
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(
     -Wall
@@ -29,8 +28,7 @@ find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
 
 add_library(sorting_arm_skills STATIC
-  src/helpers.cpp
-  src/motion_commander.cpp
+  src/types.cpp
   src/scene_manager.cpp
   src/skill_state.cpp
   src/gripper_commander.cpp
@@ -42,12 +40,7 @@ target_include_directories(sorting_arm_skills PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# rclcpp/rclcpp_action/the message packages appear in this library's public
-# headers, so skill_server_node and motion_demo need them too.
-# moveit_ros_planning_interface is PUBLIC too — MoveGroupInterface/
-# PlanningSceneInterface are included straight in motion_commander.hpp and
-# scene_manager.hpp now, no forward-declaration pimpl hiding them anymore.
-
+# PUBLIC: these appear in the library's public headers, so consumers get them too
 ament_target_dependencies(sorting_arm_skills PUBLIC
   rclcpp
   rclcpp_action
@@ -56,9 +49,7 @@ ament_target_dependencies(sorting_arm_skills PUBLIC
   moveit_msgs
   sorting_arm_interfaces
 )
-# SYSTEM brings MTC's headers in as -isystem, which shields -Werror from MoveIt
-# Task Constructor's own headers (ament_target_dependencies has no PRIVATE, so the
-# link is PUBLIC — harmless, MTC types stay confined to mtc_pick_place.cpp).
+# SYSTEM (-isystem) shields -Werror from MTC's own headers; MTC types stay in mtc_pick_place.cpp
 ament_target_dependencies(sorting_arm_skills SYSTEM PUBLIC moveit_task_constructor_core)
 target_link_libraries(sorting_arm_skills PRIVATE shape_msgs::shape_msgs)
 target_link_libraries(sorting_arm_skills PUBLIC
@@ -71,14 +62,7 @@ target_link_libraries(sorting_arm_skills PUBLIC
 add_executable(skill_server_node src/skill_server_main.cpp)
 target_link_libraries(skill_server_node PRIVATE sorting_arm_skills)
 
-add_executable(motion_demo src/motion_demo_main.cpp)
-target_link_libraries(motion_demo PRIVATE sorting_arm_skills)
-
-# Pre-existing hand-run MoveIt scratch executable — unrelated to this slice,
-# left exactly as it was.
-
-# Hand-run verification harness (Step 11's own actions, no orchestration
-# layer). It links its ROS dependencies directly and consumes no skills code.
+# hand-run harness; links its ROS deps directly, uses no skills code
 add_executable(sequence_demo src/sequence_demo_main.cpp)
 ament_target_dependencies(sequence_demo
   rclcpp
@@ -109,7 +93,7 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 install(
-  TARGETS skill_server_node motion_demo sequence_demo
+  TARGETS skill_server_node sequence_demo
   DESTINATION lib/${PROJECT_NAME}
 )
 

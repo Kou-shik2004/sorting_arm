@@ -3,20 +3,20 @@
 #include <memory>
 #include <thread>
 
+#include "moveit/move_group_interface/move_group_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "sorting_arm_interfaces/action/home.hpp"
-#include "sorting_arm_skills/motion_commander.hpp"
 #include "sorting_arm_skills/skill_state.hpp"
 #include "sorting_arm_skills/types.hpp"
 
 namespace sorting_arm {
 
-// The Home action server: one named motion to the measured SRDF `home`
-// state. Shares `state` with Pick/Place so only one of the three ever runs.
+// Home action server: one named move to the SRDF `home` pose on its own
+// MoveGroupInterface (D6). Shares `state` with Sort so only one goal runs.
 class HomeServerNode {
  public:
-  HomeServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SkillState& state);
+  HomeServerNode(rclcpp::Node::SharedPtr node, SkillState& state);
 
  private:
   using Home = sorting_arm_interfaces::action::Home;
@@ -31,8 +31,8 @@ class HomeServerNode {
                    std::shared_ptr<GoalHandle> goal_handle);
 
   rclcpp::Node::SharedPtr node_;
-  MotionCommander& motion_;
   SkillState& state_;
+  moveit::planning_interface::MoveGroupInterface arm_;
 
   rclcpp_action::Server<Home>::SharedPtr server_;
   std::jthread worker_;

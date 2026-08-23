@@ -5,12 +5,16 @@
 #include <string>
 #include <utility>
 
-#include "sorting_arm_skills/helpers.hpp"
-
 namespace sorting_arm {
 
-HomeServerNode::HomeServerNode(rclcpp::Node::SharedPtr node, MotionCommander& motion, SkillState& state)
-    : node_(std::move(node)), motion_(motion), state_(state) {
+HomeServerNode::HomeServerNode(rclcpp::Node::SharedPtr node, SkillState& state)
+    : node_(std::move(node)), state_(state), arm_(node_, "arm") {
+  arm_.setPoseReferenceFrame("world");
+  arm_.setPlanningTime(declare_or_get<double>(*node_, "planning.planning_time_s", 5.0));
+  arm_.setNumPlanningAttempts(static_cast<unsigned int>(declare_or_get<int>(*node_, "planning.planning_attempts", 5)));
+  arm_.setMaxVelocityScalingFactor(declare_or_get<double>(*node_, "planning.velocity_scaling", 0.15));
+  arm_.setMaxAccelerationScalingFactor(declare_or_get<double>(*node_, "planning.acceleration_scaling", 0.15));
+
   server_ = rclcpp_action::create_server<Home>(node_, "home", std::bind_front(&HomeServerNode::handle_goal, this),
                                                std::bind_front(&HomeServerNode::handle_cancel, this),
                                                std::bind_front(&HomeServerNode::handle_accepted, this));
@@ -42,7 +46,22 @@ SkillResult HomeServerNode::home(std::stop_token stop_token, std::shared_ptr<Hom
     return skill_error("named_motion", "cancellation requested");
   }
 
-  return motion_.move_to_named("home");
+  if (!arm_.setNamedTarget("home")) {
+    return skill_error("named_motion", "unknown named target 'home'");
+  }
+  arm_.setStartStateToCurrentState();
+
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  const auto plan_result = arm_.plan(plan);
+  if (!plan_result) {
+    return skill_error("named_motion", "named target planning failed", plan_result.val);
+  }
+
+  const auto exec_result = arm_.execute(plan);
+  if (!exec_result) {
+    return skill_error("named_motion", "named target execution failed", exec_result.val);
+  }
+  return skill_ok("named_motion");
 }
 
 void HomeServerNode::run(std::stop_token stop_token, std::shared_ptr<GoalHandle> goal_handle) {

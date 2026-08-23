@@ -11,8 +11,7 @@
 #include "sorting_arm_skills/gripper_commander.hpp"
 #include "sorting_arm_skills/types.hpp"
 
-// MTC's Task lives only in the .cpp so its headers never reach the rest of the
-// package (they compile in as -isystem there, which is what shields -Werror).
+// Task is forward-declared so MTC's headers stay in the .cpp (shielded by -isystem).
 namespace moveit {
 namespace task_constructor {
 class Task;
@@ -21,31 +20,19 @@ class Task;
 
 namespace sorting_arm {
 
-// Drives one pick-and-place. MTC plans and executes all arm motion; the grasp
-// close is our own GripperCommander so it can read the stall result and abort a
-// missed grasp before the arm lifts. Because Task::execute() is atomic, the
-// cycle is two MTC tasks with close() between them: open, reach+grasp (task A),
-// close, carry+place (task B). Only the close is custom — the pre-grasp open and
-// the place release stay native MTC. cancel() preempts the in-flight task from
-// the action thread.
+// Drives one pick-and-place. MTC does all arm motion; only the grasp close is
+// ours (GripperCommander), to abort a missed grasp before the arm lifts.
 class MtcPickPlace {
  public:
-  // support_surfaces are the static scene ids (table, trays) the grasped object
-  // is allowed to rest against.
+  // static scene ids (table, trays) the grasped object may rest against
   MtcPickPlace(rclcpp::Node::SharedPtr node, std::vector<std::string> support_surfaces);
 
-  // Open the gripper, plan+execute the reach-and-grasp task, run the stall-close,
-  // then plan+execute the carry-and-place task. report_phase names each step for
-  // action feedback. object_id must already be in the planning scene;
-  // half_height_m sizes the tcp->grasp transform.
+  // Run the full cycle; report_phase names each step for action feedback
   // NOLINTNEXTLINE(build/include_what_you_use) — 'sort' is our method, not std::sort
-  SkillResult sort(const std::string& object_id, double half_height_m,
-                   const geometry_msgs::msg::PoseStamped& destination,
+  SkillResult sort(const std::string& object_id, double half_height_m, const geometry_msgs::msg::PoseStamped& destination,
                    const std::function<void(const std::string&)>& report_phase);
 
-  // Interrupt planning of the in-flight task. Execution of a planned solution
-  // runs to completion — the installed Task::execute exposes no mid-execution
-  // cancel.
+  // Preempt planning of the in-flight task; a solution already executing runs to completion
   void cancel();
 
  private:

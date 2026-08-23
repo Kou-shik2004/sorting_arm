@@ -13,44 +13,62 @@
 
 namespace sorting_arm {
 
-// Reads one compound box set (table or a tray: id + six parallel box arrays)
-// and builds its CollisionObject. See config/skills.yaml for what the numbers mean.
-moveit_msgs::msg::CollisionObject SceneManager::load_box_set(const std::string& prefix) {
-  const std::vector<double> no_boxes;
-  const auto id = node_->declare_parameter<std::string>(prefix + ".id", "");
-  const auto size_x = node_->declare_parameter<std::vector<double>>(prefix + ".box_size_x", no_boxes);
-  const auto size_y = node_->declare_parameter<std::vector<double>>(prefix + ".box_size_y", no_boxes);
-  const auto size_z = node_->declare_parameter<std::vector<double>>(prefix + ".box_size_z", no_boxes);
-  const auto centre_x = node_->declare_parameter<std::vector<double>>(prefix + ".box_centre_x", no_boxes);
-  const auto centre_y = node_->declare_parameter<std::vector<double>>(prefix + ".box_centre_y", no_boxes);
-  const auto centre_z = node_->declare_parameter<std::vector<double>>(prefix + ".box_centre_z", no_boxes);
+namespace {
 
-  const std::size_t n = size_x.size();
+// one static collision box: dimensions and world-frame centre
+struct StaticBox {
+  double size_x;
+  double size_y;
+  double size_z;
+  double centre_x;
+  double centre_y;
+  double centre_z;
+};
 
+moveit_msgs::msg::CollisionObject make_static_object(const std::string& id, const std::vector<StaticBox>& boxes) {
   moveit_msgs::msg::CollisionObject object;
   object.header.frame_id = "world";
   object.id = id;
   object.operation = moveit_msgs::msg::CollisionObject::ADD;
 
-  for (std::size_t i = 0; i < n; ++i) {
+  for (const auto& box : boxes) {
     shape_msgs::msg::SolidPrimitive primitive;
     primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
-    primitive.dimensions = {size_x[i], size_y[i], size_z[i]};
+    primitive.dimensions = {box.size_x, box.size_y, box.size_z};
+
     geometry_msgs::msg::Pose pose;
-    pose.position.x = centre_x[i];
-    pose.position.y = centre_y[i];
-    pose.position.z = centre_z[i];
+    pose.position.x = box.centre_x;
+    pose.position.y = box.centre_y;
+    pose.position.z = box.centre_z;
     pose.orientation.w = 1.0;
+
     object.primitives.push_back(primitive);
     object.primitive_poses.push_back(pose);
   }
   return object;
 }
 
-SceneManager::SceneManager(rclcpp::Node::SharedPtr node) : node_(std::move(node)) {
-  static_objects_.push_back(load_box_set("scene.table"));
-  static_objects_.push_back(load_box_set("scene.red_tray"));
-  static_objects_.push_back(load_box_set("scene.blue_tray"));
+}  // namespace
+
+// fixed furniture, measured from sorting_arm_bringup/worlds/sorting_cell.sdf
+SceneManager::SceneManager() {
+  static_objects_.push_back(make_static_object("table", {{1.10, 1.00, 0.05, 0.35, 0.00, 0.475},
+                                                         {0.05, 0.05, 0.45, 0.85, 0.45, 0.225},
+                                                         {0.05, 0.05, 0.45, 0.85, -0.45, 0.225},
+                                                         {0.05, 0.05, 0.45, -0.15, 0.45, 0.225},
+                                                         {0.05, 0.05, 0.45, -0.15, -0.45, 0.225}}));
+
+  static_objects_.push_back(make_static_object("red_tray", {{0.20, 0.20, 0.005, 0.58, 0.35, 0.5025},
+                                                            {0.005, 0.20, 0.08, 0.68, 0.35, 0.540},
+                                                            {0.005, 0.20, 0.08, 0.48, 0.35, 0.540},
+                                                            {0.20, 0.005, 0.08, 0.58, 0.45, 0.540},
+                                                            {0.20, 0.005, 0.08, 0.58, 0.25, 0.540}}));
+
+  static_objects_.push_back(make_static_object("blue_tray", {{0.20, 0.20, 0.005, 0.58, -0.35, 0.5025},
+                                                             {0.005, 0.20, 0.08, 0.68, -0.35, 0.540},
+                                                             {0.005, 0.20, 0.08, 0.48, -0.35, 0.540},
+                                                             {0.20, 0.005, 0.08, 0.58, -0.25, 0.540},
+                                                             {0.20, 0.005, 0.08, 0.58, -0.45, 0.540}}));
 }
 
 SkillResult SceneManager::apply_static_scene() {
@@ -68,8 +86,7 @@ SkillResult SceneManager::sync_objects(const std::vector<sorting_arm_interfaces:
     collision_object.header.frame_id = "world";
     collision_object.id = detected.id;
     collision_object.operation = moveit_msgs::msg::CollisionObject::ADD;
-    // the object frame sits at the cube centre so MTC's GenerateGraspPose samples
-    // grasps at the object, not at the world origin
+    // object frame at the cube centre so GenerateGraspPose samples at the object
     collision_object.pose = detected.centre.pose;
 
     shape_msgs::msg::SolidPrimitive primitive;

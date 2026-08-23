@@ -11,9 +11,7 @@
 
 namespace sorting_arm {
 
-// these values match sorting_arm.srdf and the driven joint's URDF limit;
-// they describe our robot, not an object's width
-
+// these describe our robot (srdf/urdf limits), not an object's width
 static constexpr double kOpenPosition = 0.0;
 static constexpr double kClosePosition = 0.8;
 static constexpr double kMaxEffort = 50.0;
@@ -109,8 +107,7 @@ SkillResult GripperCommander::hold_position(double position, const std::string& 
 }
 
 SkillResult GripperCommander::close() {
-  // steps monotonically toward kClosePosition, so the loop always exits: it either
-  // stalls on the object or reaches full close (handled below), never runs forever.
+  // steps toward kClosePosition each pass, so the loop always exits: stall or full close
   std::size_t step_index = 0;
   while (true) {
     ++step_index;

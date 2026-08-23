@@ -1,78 +1,20 @@
-# Tunables for skill_server_node and motion_demo (sorting_arm_skills). Every
-# value here is declared and validated directly in the constructor of the
-# class that uses it — see docs/skills/build-and-config.md.
-#
-# Table/tray box geometry below is measured directly from
-# sorting_arm_bringup/worlds/sorting_cell.sdf (absolute world-frame poses), not
-# re-derived at runtime, so MoveIt's collision world matches Gazebo's physics
-# world exactly. If the world file changes, these numbers must be re-measured.
-# Each box set uses non-empty, equal-length arrays; sizes are positive metres.
+# Tunables for skill_server_node, each declared in the constructor that uses it.
 /**:
   ros__parameters:
     planning:
-      # Seconds; use a positive value.
-      planning_time_s: 5.0
-      # Positive whole-number attempt count.
+      planning_time_s: 5.0        # seconds
       planning_attempts: 5
-      # MoveIt scaling factors are in (0, 1].
-      velocity_scaling: 0.15
-      acceleration_scaling: 0.15
+      velocity_scaling: 0.15      # scaling in (0, 1]
+      acceleration_scaling: 0.15  # scaling in (0, 1]
 
     cartesian:
-      # Cartesian waypoint spacing in metres; use a positive value.
-      eef_step_m: 0.005
-      # Required path coverage fraction in (0, 1].
-      min_fraction: 0.99
-
-    scene:
-      # Seconds to wait for the planning-scene service; use a positive value.
-      service_timeout_s: 5.0
-      # Table top + 4 legs, absolute world-frame centres/dimensions from
-      # sorting_cell.sdf's "table" model (model pose 0.35 0 0.505).
-      table:
-        id: "table"
-        box_size_x: [1.10, 0.05, 0.05, 0.05, 0.05]
-        box_size_y: [1.00, 0.05, 0.05, 0.05, 0.05]
-        box_size_z: [0.05, 0.45, 0.45, 0.45, 0.45]
-        box_centre_x: [0.35, 0.85, 0.85, -0.15, -0.15]
-        box_centre_y: [0.00, 0.45, -0.45, 0.45, -0.45]
-        box_centre_z: [0.475, 0.225, 0.225, 0.225, 0.225]
-
-      # Floor + 4 walls, from sorting_cell.sdf's "red_tray" model (model pose
-      # 0.58 0.35 0.500). Floor top sits at z=0.505; wall tops at z=0.580.
-      red_tray:
-        id: "red_tray"
-        box_size_x: [0.20, 0.005, 0.005, 0.20, 0.20]
-        box_size_y: [0.20, 0.20, 0.20, 0.005, 0.005]
-        box_size_z: [0.005, 0.08, 0.08, 0.08, 0.08]
-        box_centre_x: [0.58, 0.68, 0.48, 0.58, 0.58]
-        box_centre_y: [0.35, 0.35, 0.35, 0.45, 0.25]
-        box_centre_z: [0.5025, 0.540, 0.540, 0.540, 0.540]
-
-      # Same shape as red_tray, from the "blue_tray" model (model pose
-      # 0.58 -0.35 0.500).
-      blue_tray:
-        id: "blue_tray"
-        box_size_x: [0.20, 0.005, 0.005, 0.20, 0.20]
-        box_size_y: [0.20, 0.20, 0.20, 0.005, 0.005]
-        box_size_z: [0.005, 0.08, 0.08, 0.08, 0.08]
-        box_centre_x: [0.58, 0.68, 0.48, 0.58, 0.58]
-        box_centre_y: [-0.35, -0.35, -0.35, -0.25, -0.45]
-        box_centre_z: [0.5025, 0.540, 0.540, 0.540, 0.540]
+      eef_step_m: 0.005  # Cartesian waypoint spacing (m)
 
     mtc:
-      # Number of full pick-and-place solutions MTC enumerates; it executes the
-      # lowest-cost one. Positive whole number.
-      max_solutions: 2
+      max_solutions: 4  # full solutions MTC enumerates; it runs the lowest-cost one
 
     targets:
-      # Clears the tallest tray wall (0.08 m) with margin above either a
-      # tabletop cube (grasp tcp z ~0.52) or a tray placement (~0.525).
-      approach_height_m: 0.12
+      approach_height_m: 0.12         # clears the tallest tray wall (0.08 m) with margin
       retreat_height_m: 0.12
-      # tcp height at grasp/place = object_centre_z + half_height_m + this.
-      # the pads sit almost entirely above tcp, so -0.036 is what puts the pad
-      # face on the whole 0.04 m cube instead of pinching its top edge.
-      grasp_offset_m: -0.036
-      # Keep every grasp aligned with one of the square box's four faces.
-      grasp_angle_delta_rad: 1.5707963267948966
+      grasp_offset_m: -0.036          # grasp/place tcp height = centre_z + half_height + this
+      grasp_angle_delta_rad: 1.5708   # 90°

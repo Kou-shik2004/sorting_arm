@@ -11,11 +11,8 @@
 
 namespace sorting_arm {
 
-// One control_msgs/action/GripperCommand client (D3). Open and close use the
-// robot's fixed SRDF endpoints; the controller's native result decides success.
-// Blocks the calling thread — must only be called from the sequence worker,
-// never the executor.
-
+// One GripperCommand client (D3); the controller's native result decides success.
+// Blocks the caller, so run it on the sequence worker, never the executor.
 class GripperCommander {
  public:
   explicit GripperCommander(rclcpp::Node::SharedPtr node);
@@ -31,8 +28,7 @@ class GripperCommander {
     GripperCommandAction::Result result;
   };
 
-  // A result timeout requests cancellation and waits for its response so an
-  // unobserved goal is not left active.
+  // on result timeout, cancel and wait so no unobserved goal stays active
   SkillResult send_goal(double position, const std::string& phase, CommandOutcome& outcome);
   SkillResult hold_position(double position, const std::string& phase, double& measured_position);
 

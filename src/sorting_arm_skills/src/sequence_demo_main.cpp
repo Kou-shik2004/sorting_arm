@@ -35,9 +35,8 @@ struct ObjectOutcome {
   std::string message;
 };
 
-// Home/Sort mirror the same shape (empty-or-simple goal, SkillResult result,
-// string phase feedback), so one send/wait/log path covers both — no shared
-// library needed, this is the only caller.
+// Home/Sort share the same goal/result/feedback shape, so one send/wait/log path
+// covers both.
 template <typename ActionT>
 bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_action::Client<ActionT>::SharedPtr& client,
                 const typename ActionT::Goal& goal, double timeout_s, const std::string& label,
@@ -89,10 +88,8 @@ bool run_action(const rclcpp::Node::SharedPtr& node, const typename rclcpp_actio
   return wrapped.code == rclcpp_action::ResultCode::SUCCEEDED && out_result.ok;
 }
 
-// Hand-run verification harness, same mould as motion_demo: sync every
-// configured object, home, then sort each in order, home again, print a
-// summary. No routing policy, no recovery — destinations come entirely from
-// config. Step 12's sorting_arm_executive replaces this; it doesn't extend it.
+// Hand-run harness: sync objects, home, sort each in order, home, print a summary.
+// No routing or recovery — sorting_arm_executive replaces this.
 class SequenceDemo {
  public:
   using Home = sorting_arm_interfaces::action::Home;

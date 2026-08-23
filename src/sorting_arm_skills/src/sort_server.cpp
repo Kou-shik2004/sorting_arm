@@ -5,20 +5,18 @@
 #include <string>
 #include <utility>
 
-#include "sorting_arm_skills/helpers.hpp"
+#include "sorting_arm_skills/types.hpp"
 
 namespace sorting_arm {
 
-SortServerNode::SortServerNode(rclcpp::Node::SharedPtr node, MtcPickPlace& planner, SceneManager& scene,
-                               SkillState& state)
+SortServerNode::SortServerNode(rclcpp::Node::SharedPtr node, MtcPickPlace& planner, SceneManager& scene, SkillState& state)
     : node_(std::move(node)), planner_(planner), scene_(scene), state_(state) {
   server_ = rclcpp_action::create_server<Sort>(node_, "sort", std::bind_front(&SortServerNode::handle_goal, this),
                                                std::bind_front(&SortServerNode::handle_cancel, this),
                                                std::bind_front(&SortServerNode::handle_accepted, this));
 }
 
-rclcpp_action::GoalResponse SortServerNode::handle_goal(const rclcpp_action::GoalUUID&,
-                                                        std::shared_ptr<const Sort::Goal>) {
+rclcpp_action::GoalResponse SortServerNode::handle_goal(const rclcpp_action::GoalUUID&, std::shared_ptr<const Sort::Goal>) {
   if (!state_.try_claim()) {
     RCLCPP_WARN(node_->get_logger(), "rejecting Sort goal: a manipulation goal is already active");
     return rclcpp_action::GoalResponse::REJECT;
@@ -38,8 +36,7 @@ void SortServerNode::handle_accepted(std::shared_ptr<GoalHandle> goal_handle) {
 
 SkillResult SortServerNode::sort_object(const std::string& object_id, double half_height_m,
                                         const geometry_msgs::msg::PoseStamped& destination,
-                                        std::shared_ptr<Sort::Feedback> feedback,
-                                        std::shared_ptr<GoalHandle> goal_handle) {
+                                        std::shared_ptr<Sort::Feedback> feedback, std::shared_ptr<GoalHandle> goal_handle) {
   const auto report_phase = [&feedback, &goal_handle](const std::string& phase) {
     feedback->phase = phase;
     goal_handle->publish_feedback(feedback);
@@ -57,8 +54,7 @@ void SortServerNode::run(std::shared_ptr<GoalHandle> goal_handle) {
       goal_handle->abort(result);
     } else {
       auto feedback = std::make_shared<Sort::Feedback>();
-      const auto outcome =
-          sort_object(goal->object_id, geometry->half_height_m, goal->destination, feedback, goal_handle);
+      const auto outcome = sort_object(goal->object_id, geometry->half_height_m, goal->destination, feedback, goal_handle);
       result->result = to_msg(outcome);
 
       if (goal_handle->is_canceling()) {
