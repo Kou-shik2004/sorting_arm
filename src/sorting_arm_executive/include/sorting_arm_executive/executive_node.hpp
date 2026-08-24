@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -8,8 +9,7 @@
 #include "behaviortree_cpp/bt_factory.h"
 #include "controller_manager_msgs/srv/list_controllers.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "sorting_arm_executive/assignment_planner.hpp"
-#include "sorting_arm_executive/config.hpp"
+#include "sorting_arm_executive/bt_nodes.hpp"
 #include "sorting_arm_interfaces/srv/detect_objects.hpp"
 #include "sorting_arm_interfaces/srv/sync_objects.hpp"
 
@@ -35,8 +35,11 @@ class ExecutiveNode : public rclcpp::Node {
   bool controller_response_is_ready(const controller_manager_msgs::srv::ListControllers::Response& response) const;
   void log_terminal(BT::NodeStatus status);
 
-  ExecutiveConfig config_;
-  std::optional<AssignmentPlanner> planner_;
+  std::size_t object_count_ = 0;
+  double readiness_timeout_s_ = 0.0;
+  double detect_timeout_s_ = 0.0;
+  double sync_timeout_s_ = 0.0;
+  double cancel_timeout_s_ = 0.0;
   std::shared_ptr<ExecutionReport> report_ = std::make_shared<ExecutionReport>();
 
   rclcpp::Client<sorting_arm_interfaces::srv::DetectObjects>::SharedPtr detect_client_;

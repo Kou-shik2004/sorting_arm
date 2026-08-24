@@ -1,6 +1,7 @@
 <launch>
 
     <arg name="gui" default="true" />
+    <arg name="object_count" default="4" />
     <arg name="rviz_config"
         default="$(find-pkg-share sorting_arm_bringup)/rviz/final_moveit.rviz" />
     <arg name="camera_width" default="1280" />
@@ -48,6 +49,13 @@
     <node pkg="ros_gz_sim" exec="create"
         args="-world sorting_cell -topic robot_description -name sorting_arm" />
 
+    <!-- with the arm in the world, drop the run's cubes in the same startup step -->
+    <node pkg="sorting_arm_bringup" exec="cube_spawner" output="screen">
+        <param name="object_count" value="$(var object_count)" type="int" />
+        <param name="red_model" value="$(find-pkg-share sorting_arm_bringup)/models/red_cube.sdf" />
+        <param name="blue_model" value="$(find-pkg-share sorting_arm_bringup)/models/blue_cube.sdf" />
+    </node>
+
     <node pkg="controller_manager" exec="spawner"
         args="joint_state_broadcaster --controller-manager-timeout 60" />
     <node pkg="controller_manager" exec="spawner"
@@ -58,8 +66,8 @@
     <!-- Main moveit python launch file -->
     <include file="$(find-pkg-share sorting_arm_moveit)/launch/move_group.launch.py" />
 
-    <!-- <group if="$(var gui)">
+    <group if="$(var gui)">
         <node pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)" />
-    </group> -->
+    </group>
 
 </launch>

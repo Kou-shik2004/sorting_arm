@@ -43,6 +43,7 @@ int main(int argc, char* argv[]) {
                 sorting_arm::skill_error("scene_apply", "cannot sync objects while a manipulation goal is active"));
             return;
           }
+
           response->result = sorting_arm::to_msg(scene.sync_objects(request->objects));
         });
 

@@ -1,10 +1,12 @@
 <launch>
 
+    <arg name="object_count" default="4" />
     <arg name="skills_config"
         default="$(find-pkg-share sorting_arm_skills)/config/skills.yaml" />
     <arg name="executive_config"
-        default="$(find-pkg-share sorting_arm_executive)/config/sorting.yaml" />
-    <arg name="use_camera_provider" default="true" />
+        default="$(find-pkg-share sorting_arm_executive)/config/executive.yaml" />
+    <arg name="perception_config"
+        default="$(find-pkg-share sorting_arm_perception)/config/perception.yaml" />
     <arg name="show_viewer" default="true" />
     <arg name="camera_update_rate" default="30" />
     <arg name="viewer_scale" default="1.0" />
@@ -12,6 +14,7 @@
 
     <include file="$(find-pkg-share sorting_arm_bringup)/launch/sim.launch.xml">
         <arg name="gui" value="$(var gui)" />
+        <arg name="object_count" value="$(var object_count)" />
         <!-- we pin these instead of dropping them - includes share one launch-config
              namespace, so an undeclared camera_width:= on the CLI still leaks in otherwise -->
         <arg name="camera_width" value="1280" />
@@ -25,21 +28,15 @@
         <arg name="skills_config" value="$(var skills_config)" />
     </include>
 
-    <group if="$(var use_camera_provider)">
-        <include file="$(find-pkg-share sorting_arm_bringup)/launch/perception.launch.xml">
-            <arg name="show_viewer" value="$(var show_viewer)" />
-            <arg name="viewer_scale" value="$(var viewer_scale)" />
-        </include>
-    </group>
-
-    <group unless="$(var use_camera_provider)">
-        <node pkg="sorting_arm_executive" exec="fixed_object_provider" output="screen">
-            <param from="$(var executive_config)" />
-        </node>
-    </group>
+    <include file="$(find-pkg-share sorting_arm_bringup)/launch/perception.launch.xml">
+        <arg name="perception_config" value="$(var perception_config)" />
+        <arg name="show_viewer" value="$(var show_viewer)" />
+        <arg name="viewer_scale" value="$(var viewer_scale)" />
+    </include>
 
     <node pkg="sorting_arm_executive" exec="executive_node" output="screen">
         <param from="$(var executive_config)" />
+        <param name="object_count" value="$(var object_count)" type="int" />
     </node>
 
 </launch>

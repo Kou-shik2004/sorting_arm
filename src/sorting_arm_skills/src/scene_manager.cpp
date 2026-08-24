@@ -50,7 +50,7 @@ moveit_msgs::msg::CollisionObject make_static_object(const std::string& id, cons
 
 }  // namespace
 
-// fixed furniture, measured from sorting_arm_bringup/worlds/sorting_cell.sdf
+// Fixed furniture duplicates sorting_cell.sdf for MoveIt; update both representations together.
 SceneManager::SceneManager() {
   static_objects_.push_back(make_static_object("table", {{1.10, 1.00, 0.05, 0.35, 0.00, 0.475},
                                                          {0.05, 0.05, 0.45, 0.85, 0.45, 0.225},
@@ -58,17 +58,17 @@ SceneManager::SceneManager() {
                                                          {0.05, 0.05, 0.45, -0.15, 0.45, 0.225},
                                                          {0.05, 0.05, 0.45, -0.15, -0.45, 0.225}}));
 
-  static_objects_.push_back(make_static_object("red_tray", {{0.20, 0.20, 0.005, 0.58, 0.35, 0.5025},
-                                                            {0.005, 0.20, 0.08, 0.68, 0.35, 0.540},
-                                                            {0.005, 0.20, 0.08, 0.48, 0.35, 0.540},
-                                                            {0.20, 0.005, 0.08, 0.58, 0.45, 0.540},
-                                                            {0.20, 0.005, 0.08, 0.58, 0.25, 0.540}}));
+  static_objects_.push_back(make_static_object("red_tray", {{0.24, 0.24, 0.005, 0.70, 0.36, 0.5025},
+                                                            {0.005, 0.24, 0.05, 0.8175, 0.36, 0.525},
+                                                            {0.005, 0.24, 0.05, 0.5825, 0.36, 0.525},
+                                                            {0.245, 0.005, 0.05, 0.70, 0.4775, 0.525},
+                                                            {0.245, 0.005, 0.05, 0.70, 0.2425, 0.525}}));
 
-  static_objects_.push_back(make_static_object("blue_tray", {{0.20, 0.20, 0.005, 0.58, -0.35, 0.5025},
-                                                             {0.005, 0.20, 0.08, 0.68, -0.35, 0.540},
-                                                             {0.005, 0.20, 0.08, 0.48, -0.35, 0.540},
-                                                             {0.20, 0.005, 0.08, 0.58, -0.25, 0.540},
-                                                             {0.20, 0.005, 0.08, 0.58, -0.45, 0.540}}));
+  static_objects_.push_back(make_static_object("blue_tray", {{0.24, 0.24, 0.005, 0.70, -0.36, 0.5025},
+                                                             {0.005, 0.24, 0.05, 0.8175, -0.36, 0.525},
+                                                             {0.005, 0.24, 0.05, 0.5825, -0.36, 0.525},
+                                                             {0.245, 0.005, 0.05, 0.70, -0.2425, 0.525},
+                                                             {0.245, 0.005, 0.05, 0.70, -0.4775, 0.525}}));
 }
 
 SkillResult SceneManager::apply_static_scene() {

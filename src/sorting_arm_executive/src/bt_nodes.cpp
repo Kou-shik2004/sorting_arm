@@ -1,23 +1,23 @@
 #include "sorting_arm_executive/bt_nodes.hpp"
 
-#include <algorithm>
-#include <chrono>
-#include <exception>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace sorting_arm_executive {
 namespace {
 
-using namespace std::chrono_literals;
-
-// action/service progress is measured in sim time, so timeout deadlines have to be too -
-// a steady_clock deadline shrinks under a slow-RTF sim and fires for no real reason.
-rclcpp::Time deadline_after(const rclcpp::Clock::SharedPtr& clock, double seconds) {
-  return clock->now() + rclcpp::Duration::from_seconds(seconds);
-}
+// Tray grid geometry must match sorting_cell.sdf and SceneManager's collision objects.
+// Two columns by two rows hold the most an equal red/blue split sends to one tray.
+constexpr std::size_t kTrayColumns = 2;
+constexpr double kPlacePitch = 0.08;
+constexpr double kRedTrayCentreX = 0.70;
+constexpr double kRedTrayCentreY = 0.36;
+constexpr double kBlueTrayCentreX = 0.70;
+constexpr double kBlueTrayCentreY = -0.36;
+constexpr double kPlaceZ = 0.525;
 
 sorting_arm_interfaces::msg::SkillResult failure_result(std::string phase, std::string message) {
   sorting_arm_interfaces::msg::SkillResult result;
@@ -35,14 +35,14 @@ void record_failure(const std::shared_ptr<ExecutionReport>& report,
   }
 }
 
-// RosActionNode routes only SUCCEEDED here; a server can still finish cleanly with a
-// logical ok=false, so a non-ok payload is a FAILURE carrying that message.
-template <typename WrappedResult>
-BT::NodeStatus report_success_result(const std::shared_ptr<ExecutionReport>& report, const WrappedResult& wrapped) {
-  if (wrapped.result->result.ok) {
+// RosActionNode routes only SUCCEEDED to onResultReceived; a server can still finish cleanly
+// with a logical ok=false, so a non-ok payload is a FAILURE carrying that message.
+BT::NodeStatus record_result(const std::shared_ptr<ExecutionReport>& report,
+                             const sorting_arm_interfaces::msg::SkillResult& result) {
+  if (result.ok) {
     return BT::NodeStatus::SUCCESS;
   }
-  record_failure(report, wrapped.result->result);
+  record_failure(report, result);
   return BT::NodeStatus::FAILURE;
 }
 
@@ -52,19 +52,22 @@ BT::NodeStatus report_error(const std::shared_ptr<ExecutionReport>& report, cons
   return BT::NodeStatus::FAILURE;
 }
 
-// abort/cancel carry the server's real SkillResult; a transport error (reject/timeout/
-// unreachable) has no payload, so fall back to the error-code name.
-template <typename WrappedResult>
-BT::NodeStatus report_failure(const std::shared_ptr<ExecutionReport>& report, const std::string& phase,
-                              BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
-  if (result && !result->result->result.ok) {
-    record_failure(report, result->result->result);
-    return BT::NodeStatus::FAILURE;
-  }
-  return report_error(report, phase, error);
-}
-
 }  // namespace
+
+geometry_msgs::msg::PoseStamped tray_slot(const std::string& label, std::size_t index_in_tray) {
+  const double centre_x = label == "red" ? kRedTrayCentreX : kBlueTrayCentreX;
+  const double centre_y = label == "red" ? kRedTrayCentreY : kBlueTrayCentreY;
+  const std::size_t column = index_in_tray % kTrayColumns;
+  const std::size_t row = index_in_tray / kTrayColumns;
+
+  geometry_msgs::msg::PoseStamped pose;
+  pose.header.frame_id = "world";
+  pose.pose.position.x = centre_x + (static_cast<double>(column) - (kTrayColumns - 1) / 2.0) * kPlacePitch;
+  pose.pose.position.y = centre_y + (static_cast<double>(row) - 0.5) * kPlacePitch;
+  pose.pose.position.z = kPlaceZ;
+  pose.pose.orientation.w = 1.0;
+  return pose;
+}
 
 RemainingCountNode::RemainingCountNode(const std::string& name, const BT::NodeConfig& config,
                                        std::shared_ptr<AdaptiveCycleState> state, std::shared_ptr<ExecutionReport> report)
@@ -74,21 +77,13 @@ BT::PortsList RemainingCountNode::providedPorts() { return {BT::OutputPort<std::
 
 BT::NodeStatus RemainingCountNode::tick() {
   report_->operation = "RemainingCount";
-  if (state_->remaining_count == 0U || state_->pending_job) {
-    record_failure(report_, failure_result("cycle_state", "remaining-count state is inconsistent"));
-    return BT::NodeStatus::FAILURE;
-  }
-  const auto output = setOutput("expected_count", static_cast<std::uint32_t>(state_->remaining_count));
-  if (!output) {
-    record_failure(report_, failure_result("cycle_state", output.error()));
-    return BT::NodeStatus::FAILURE;
-  }
+  setOutput("expected_count", static_cast<std::uint32_t>(state_->remaining_count));
   return BT::NodeStatus::SUCCESS;
 }
 
-PlanNextJobNode::PlanNextJobNode(const std::string& name, const BT::NodeConfig& config, AssignmentPlanner planner,
+PlanNextJobNode::PlanNextJobNode(const std::string& name, const BT::NodeConfig& config,
                                  std::shared_ptr<AdaptiveCycleState> state, std::shared_ptr<ExecutionReport> report)
-    : BT::SyncActionNode(name, config), planner_(std::move(planner)), state_(std::move(state)), report_(std::move(report)) {}
+    : BT::SyncActionNode(name, config), state_(std::move(state)), report_(std::move(report)) {}
 
 BT::PortsList PlanNextJobNode::providedPorts() {
   return {BT::InputPort<std::vector<sorting_arm_interfaces::msg::DetectedObject>>("objects"), BT::OutputPort<SortJob>("job"),
@@ -98,11 +93,7 @@ BT::PortsList PlanNextJobNode::providedPorts() {
 BT::NodeStatus PlanNextJobNode::tick() {
   report_->operation = "PlanNextJob";
   std::vector<sorting_arm_interfaces::msg::DetectedObject> objects;
-  const auto input = getInput("objects", objects);
-  if (!input) {
-    record_failure(report_, failure_result("allocation", input.error()));
-    return BT::NodeStatus::FAILURE;
-  }
+  getInput("objects", objects);
   if (objects.size() != state_->remaining_count) {
     record_failure(report_, failure_result("allocation", "detection count does not match remaining cycle count"));
     return BT::NodeStatus::FAILURE;
@@ -112,28 +103,17 @@ BT::NodeStatus PlanNextJobNode::tick() {
   for (auto& object : objects) {
     object.id = prefix + object.id;
   }
-  const auto allocation = planner_.plan(objects, state_->used_destination_slots);
-  if (!allocation.ok) {
-    record_failure(report_, failure_result("allocation", allocation.message));
-    return BT::NodeStatus::FAILURE;
-  }
-  const SortJob& job = allocation.jobs.front();
-  const auto selected =
-      std::find_if(objects.begin(), objects.end(), [&job](const auto& object) { return object.id == job.object_id; });
-  if (selected == objects.end()) {
-    record_failure(report_, failure_result("allocation", "allocated object is absent from the detected snapshot"));
-    return BT::NodeStatus::FAILURE;
-  }
+
+  // pick any remaining cube; its colour fixes the tray, its per-tray placed count fixes the slot
+  const auto& next = objects.front();
+  const std::size_t index_in_tray = next.label == "red" ? state_->red_placed : state_->blue_placed;
+  SortJob job{next.id, next.label, tray_slot(next.label, index_in_tray)};
 
   std::vector<sorting_arm_interfaces::msg::DetectedObject> scene_objects = state_->placed_objects;
   scene_objects.insert(scene_objects.end(), objects.begin(), objects.end());
-  const auto job_output = setOutput("job", job);
-  const auto scene_output = setOutput("scene_objects", scene_objects);
-  if (!job_output || !scene_output) {
-    record_failure(report_, failure_result("allocation", !job_output ? job_output.error() : scene_output.error()));
-    return BT::NodeStatus::FAILURE;
-  }
-  state_->pending_job = AdaptiveCycleState::PendingJob{job, *selected};
+  setOutput("job", job);
+  setOutput("scene_objects", scene_objects);
+  state_->pending_job = AdaptiveCycleState::PendingJob{job, next};
   ++state_->scan_number;
   return BT::NodeStatus::SUCCESS;
 }
@@ -147,158 +127,81 @@ BT::PortsList CommitPlacedJobNode::providedPorts() { return {BT::InputPort<SortJ
 BT::NodeStatus CommitPlacedJobNode::tick() {
   report_->operation = "CommitPlacedJob";
   SortJob job;
-  const auto input = getInput("job", job);
-  if (!input) {
-    record_failure(report_, failure_result("cycle_state", input.error()));
-    return BT::NodeStatus::FAILURE;
-  }
-  if (!state_->pending_job || state_->pending_job->job.object_id != job.object_id ||
-      state_->pending_job->job.destination_slot_index != job.destination_slot_index) {
-    record_failure(report_, failure_result("cycle_state", "placed job does not match the planned object"));
-    return BT::NodeStatus::FAILURE;
-  }
+  getInput("job", job);
 
   auto placed_object = state_->pending_job->object;
   placed_object.centre = job.destination;
   state_->placed_objects.push_back(std::move(placed_object));
-  state_->used_destination_slots.insert(job.destination_slot_index);
+  if (job.label == "red") {
+    ++state_->red_placed;
+  } else {
+    ++state_->blue_placed;
+  }
   --state_->remaining_count;
   state_->pending_job.reset();
   return BT::NodeStatus::SUCCESS;
 }
 
-DetectObjectsNode::DetectObjectsNode(const std::string& name, const BT::NodeConfig& config,
-                                     rclcpp::Client<Service>::SharedPtr client, double timeout_s,
-                                     std::shared_ptr<ExecutionReport> report, rclcpp::Clock::SharedPtr clock)
-    : BT::StatefulActionNode(name, config),
-      client_(std::move(client)),
-      timeout_s_(timeout_s),
-      report_(std::move(report)),
-      clock_(std::move(clock)) {}
+DetectObjectsNode::DetectObjectsNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+                                     std::shared_ptr<ExecutionReport> report)
+    : BT::RosServiceNode<Service>(name, config, params), report_(std::move(report)) {}
 
 BT::PortsList DetectObjectsNode::providedPorts() {
-  return {BT::InputPort<std::uint32_t>("expected_count"),
-          BT::OutputPort<std::vector<sorting_arm_interfaces::msg::DetectedObject>>("objects")};
+  return providedBasicPorts({BT::InputPort<std::uint32_t>("expected_count"),
+                             BT::OutputPort<std::vector<sorting_arm_interfaces::msg::DetectedObject>>("objects")});
 }
 
-BT::NodeStatus DetectObjectsNode::onStart() {
+bool DetectObjectsNode::setRequest(Request::SharedPtr& request) {
   report_->operation = "DetectObjects";
   report_->object_id.clear();
   report_->phase.clear();
   std::uint32_t expected_count = 0;
-  const auto input = getInput("expected_count", expected_count);
-  if (!input || expected_count == 0U) {
-    record_failure(report_, failure_result("detect", input ? "expected_count must be positive" : input.error()));
-    return BT::NodeStatus::FAILURE;
-  }
-  auto request = std::make_shared<Service::Request>();
+  getInput("expected_count", expected_count);
   request->expected_count = expected_count;
-  try {
-    pending_.emplace(client_->async_send_request(request));
-    deadline_ = deadline_after(clock_, timeout_s_);
-    return BT::NodeStatus::RUNNING;
-  } catch (const std::exception& error) {
-    record_failure(report_, failure_result("detect", "DetectObjects request failed: " + std::string(error.what())));
+  return true;
+}
+
+BT::NodeStatus DetectObjectsNode::onResponseReceived(const Response::SharedPtr& response) {
+  if (!response->result.ok) {
+    record_failure(report_, response->result);
     return BT::NodeStatus::FAILURE;
   }
+  setOutput("objects", response->objects);
+  return BT::NodeStatus::SUCCESS;
 }
 
-BT::NodeStatus DetectObjectsNode::onRunning() {
-  if (pending_->future.wait_for(0s) == std::future_status::ready) {
-    const auto response = pending_->future.get();
-    pending_.reset();
-    if (response == nullptr) {
-      record_failure(report_, failure_result("detect", "DetectObjects returned no response"));
-      return BT::NodeStatus::FAILURE;
-    }
-    if (!response->result.ok) {
-      record_failure(report_, response->result);
-      return BT::NodeStatus::FAILURE;
-    }
-    const auto output = setOutput("objects", response->objects);
-    if (!output) {
-      record_failure(report_, failure_result("detect", output.error()));
-      return BT::NodeStatus::FAILURE;
-    }
-    return BT::NodeStatus::SUCCESS;
-  }
-  if (clock_->now() >= deadline_) {
-    client_->remove_pending_request(*pending_);
-    pending_.reset();
-    record_failure(report_, failure_result("detect", "DetectObjects response timed out"));
-    return BT::NodeStatus::FAILURE;
-  }
-  return BT::NodeStatus::RUNNING;
+BT::NodeStatus DetectObjectsNode::onFailure(BT::ServiceNodeErrorCode error) {
+  record_failure(report_, failure_result("detect", std::string("DetectObjects ") + BT::toStr(error)));
+  return BT::NodeStatus::FAILURE;
 }
 
-void DetectObjectsNode::onHalted() {
-  if (pending_) {
-    client_->remove_pending_request(*pending_);
-    pending_.reset();
-  }
-}
-
-SyncObjectsNode::SyncObjectsNode(const std::string& name, const BT::NodeConfig& config,
-                                 rclcpp::Client<Service>::SharedPtr client, double timeout_s,
-                                 std::shared_ptr<ExecutionReport> report, rclcpp::Clock::SharedPtr clock)
-    : BT::StatefulActionNode(name, config),
-      client_(std::move(client)),
-      timeout_s_(timeout_s),
-      report_(std::move(report)),
-      clock_(std::move(clock)) {}
+SyncObjectsNode::SyncObjectsNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
+                                 std::shared_ptr<ExecutionReport> report)
+    : BT::RosServiceNode<Service>(name, config, params), report_(std::move(report)) {}
 
 BT::PortsList SyncObjectsNode::providedPorts() {
-  return {BT::InputPort<std::vector<sorting_arm_interfaces::msg::DetectedObject>>("objects")};
+  return providedBasicPorts({BT::InputPort<std::vector<sorting_arm_interfaces::msg::DetectedObject>>("objects")});
 }
 
-BT::NodeStatus SyncObjectsNode::onStart() {
+bool SyncObjectsNode::setRequest(Request::SharedPtr& request) {
   report_->operation = "SyncObjects";
   std::vector<sorting_arm_interfaces::msg::DetectedObject> objects;
-  const auto input = getInput("objects", objects);
-  if (!input) {
-    record_failure(report_, failure_result("scene_apply", input.error()));
-    return BT::NodeStatus::FAILURE;
-  }
-  auto request = std::make_shared<Service::Request>();
+  getInput("objects", objects);
   request->objects = std::move(objects);
-  try {
-    pending_.emplace(client_->async_send_request(request));
-    deadline_ = deadline_after(clock_, timeout_s_);
-    return BT::NodeStatus::RUNNING;
-  } catch (const std::exception& error) {
-    record_failure(report_, failure_result("scene_apply", "SyncObjects request failed: " + std::string(error.what())));
-    return BT::NodeStatus::FAILURE;
-  }
+  return true;
 }
 
-BT::NodeStatus SyncObjectsNode::onRunning() {
-  if (pending_->future.wait_for(0s) == std::future_status::ready) {
-    const auto response = pending_->future.get();
-    pending_.reset();
-    if (response == nullptr) {
-      record_failure(report_, failure_result("scene_apply", "SyncObjects returned no response"));
-      return BT::NodeStatus::FAILURE;
-    }
-    if (!response->result.ok) {
-      record_failure(report_, response->result);
-      return BT::NodeStatus::FAILURE;
-    }
-    return BT::NodeStatus::SUCCESS;
-  }
-  if (clock_->now() >= deadline_) {
-    client_->remove_pending_request(*pending_);
-    pending_.reset();
-    record_failure(report_, failure_result("scene_apply", "SyncObjects response timed out"));
+BT::NodeStatus SyncObjectsNode::onResponseReceived(const Response::SharedPtr& response) {
+  if (!response->result.ok) {
+    record_failure(report_, response->result);
     return BT::NodeStatus::FAILURE;
   }
-  return BT::NodeStatus::RUNNING;
+  return BT::NodeStatus::SUCCESS;
 }
 
-void SyncObjectsNode::onHalted() {
-  if (pending_) {
-    client_->remove_pending_request(*pending_);
-    pending_.reset();
-  }
+BT::NodeStatus SyncObjectsNode::onFailure(BT::ServiceNodeErrorCode error) {
+  record_failure(report_, failure_result("scene_apply", std::string("SyncObjects ") + BT::toStr(error)));
+  return BT::NodeStatus::FAILURE;
 }
 
 HomeNode::HomeNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
@@ -320,12 +223,18 @@ BT::NodeStatus HomeNode::onFeedback(const std::shared_ptr<const Feedback> feedba
   return BT::NodeStatus::RUNNING;
 }
 
-BT::NodeStatus HomeNode::onResultReceived(const WrappedResult& result) { return report_success_result(report_, result); }
+BT::NodeStatus HomeNode::onResultReceived(const WrappedResult& result) {
+  return record_result(report_, result.result->result);
+}
 
 BT::NodeStatus HomeNode::onFailure(BT::ActionNodeErrorCode error) { return report_error(report_, "home", error); }
 
 BT::NodeStatus HomeNode::onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
-  return report_failure(report_, "home", error, result);
+  if (result && !result->result->result.ok) {
+    record_failure(report_, result->result->result);
+    return BT::NodeStatus::FAILURE;
+  }
+  return report_error(report_, "home", error);
 }
 
 SortNode::SortNode(const std::string& name, const BT::NodeConfig& config, const BT::RosNodeParams& params,
@@ -336,11 +245,7 @@ BT::PortsList SortNode::providedPorts() { return providedBasicPorts({BT::InputPo
 
 bool SortNode::setGoal(Goal& goal) {
   SortJob job;
-  const auto input = getInput("job", job);
-  if (!input) {
-    record_failure(report_, failure_result("sort", input.error()));
-    return false;
-  }
+  getInput("job", job);
   report_->operation = "Sort";
   report_->object_id = job.object_id;
   report_->phase.clear();
@@ -356,7 +261,7 @@ BT::NodeStatus SortNode::onFeedback(const std::shared_ptr<const Feedback> feedba
 }
 
 BT::NodeStatus SortNode::onResultReceived(const WrappedResult& result) {
-  const auto status = report_success_result(report_, result);
+  const auto status = record_result(report_, result.result->result);
   if (status == BT::NodeStatus::SUCCESS) {
     ++report_->completed_jobs;
   }
@@ -366,13 +271,17 @@ BT::NodeStatus SortNode::onResultReceived(const WrappedResult& result) {
 BT::NodeStatus SortNode::onFailure(BT::ActionNodeErrorCode error) { return report_error(report_, "sort", error); }
 
 BT::NodeStatus SortNode::onFailure(BT::ActionNodeErrorCode error, const std::optional<WrappedResult>& result) {
-  return report_failure(report_, "sort", error, result);
+  if (result && !result->result->result.ok) {
+    record_failure(report_, result->result->result);
+    return BT::NodeStatus::FAILURE;
+  }
+  return report_error(report_, "sort", error);
 }
 
-void register_policy_nodes(BT::BehaviorTreeFactory& factory, AssignmentPlanner planner,
-                           std::shared_ptr<AdaptiveCycleState> state, std::shared_ptr<ExecutionReport> report) {
+void register_policy_nodes(BT::BehaviorTreeFactory& factory, std::shared_ptr<AdaptiveCycleState> state,
+                           std::shared_ptr<ExecutionReport> report) {
   factory.registerNodeType<RemainingCountNode>("RemainingCount", state, report);
-  factory.registerNodeType<PlanNextJobNode>("PlanNextJob", std::move(planner), state, report);
+  factory.registerNodeType<PlanNextJobNode>("PlanNextJob", state, report);
   factory.registerNodeType<CommitPlacedJobNode>("CommitPlacedJob", std::move(state), std::move(report));
 }
 

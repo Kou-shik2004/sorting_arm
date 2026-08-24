@@ -25,36 +25,25 @@ find_package(controller_manager_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
-find_package(shape_msgs REQUIRED)
 find_package(sorting_arm_interfaces REQUIRED)
 
-add_library(sorting_arm_executive_core STATIC
-  src/assignment_planner.cpp
+add_executable(executive_node
   src/bt_nodes.cpp
-  src/config.cpp
   src/executive_node.cpp
 )
-target_include_directories(sorting_arm_executive_core PUBLIC
+target_include_directories(executive_node PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
 )
-ament_target_dependencies(sorting_arm_executive_core PUBLIC
+ament_target_dependencies(executive_node PUBLIC
   ament_index_cpp
   behaviortree_ros2
   controller_manager_msgs
   geometry_msgs
   rclcpp
   rclcpp_action
-  shape_msgs
   sorting_arm_interfaces
 )
-target_link_libraries(sorting_arm_executive_core PUBLIC behaviortree_cpp::behaviortree_cpp)
-
-add_executable(executive_node src/executive_main.cpp)
-target_link_libraries(executive_node PRIVATE sorting_arm_executive_core)
-
-add_executable(fixed_object_provider src/fixed_object_provider_main.cpp)
-target_link_libraries(fixed_object_provider PRIVATE sorting_arm_executive_core)
+target_link_libraries(executive_node PUBLIC behaviortree_cpp::behaviortree_cpp)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -78,6 +67,6 @@ endif()
 
 install(DIRECTORY behavior_trees config DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
-install(TARGETS executive_node fixed_object_provider DESTINATION lib/${PROJECT_NAME})
+install(TARGETS executive_node DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

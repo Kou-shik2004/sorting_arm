@@ -2,7 +2,7 @@
 <package format="3">
   <name>sorting_arm_bringup</name>
   <version>0.0.0</version>
-  <description>Bring-up launch and controller config that wires the description, ros2_control and MoveIt together.</description>
+  <description>Launch, controller config, and simulation startup for the sorting cell.</description>
   <maintainer email="koushik20040804@gmail.com">Koushik</maintainer>
   <license>MIT</license>
 
@@ -15,8 +15,11 @@
   <exec_depend>sorting_arm_skills</exec_depend>
   <exec_depend>sorting_arm_executive</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
-  <exec_depend>python3-yaml</exec_depend>
   <exec_depend>moveit_configs_utils</exec_depend>
+
+  <!-- cube_spawner, the one-shot C++ node that spawns the run's cubes via the gz create service -->
+  <depend>rclcpp</depend>
+  <depend>ros_gz_interfaces</depend>
 
   <!-- nodes moveit.launch.xml starts by hand -->
   <exec_depend>xacro</exec_depend>

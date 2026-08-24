@@ -21,3 +21,9 @@
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "gz.msgs.CameraInfo"
   direction: GZ_TO_ROS
+
+# the world create service so cube_spawner can insert cubes as a ROS SpawnEntity call
+- service_name: "/world/sorting_cell/create"
+  ros_type_name: "ros_gz_interfaces/srv/SpawnEntity"
+  gz_req_type_name: "gz.msgs.EntityFactory"
+  gz_rep_type_name: "gz.msgs.Boolean"

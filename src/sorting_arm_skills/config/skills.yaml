@@ -4,8 +4,8 @@
     planning:
       planning_time_s: 5.0        # seconds
       planning_attempts: 5
-      velocity_scaling: 0.15      # scaling in (0, 1]
-      acceleration_scaling: 0.15  # scaling in (0, 1]
+      velocity_scaling: 0.45      # scaling in (0, 1]
+      acceleration_scaling: 0.45  # scaling in (0, 1]
 
     cartesian:
       eef_step_m: 0.005  # Cartesian waypoint spacing (m)
@@ -14,7 +14,7 @@
       max_solutions: 4  # full solutions MTC enumerates; it runs the lowest-cost one
 
     targets:
-      approach_height_m: 0.12         # clears the tallest tray wall (0.08 m) with margin
+      approach_height_m: 0.12         # clears the 0.03 m tray walls with margin
       retreat_height_m: 0.12
       grasp_offset_m: -0.036          # grasp/place tcp height = centre_z + half_height + this
       grasp_angle_delta_rad: 1.5708   # 90°

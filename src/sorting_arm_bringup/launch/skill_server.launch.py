@@ -14,7 +14,6 @@ def generate_launch_description():
         default_value=os.path.join(
             get_package_share_directory('sorting_arm_skills'), 'config', 'skills.yaml'),
     )
-
     # skill_server_node now builds an MTC task: task.loadRobotModel + PipelinePlanner
     # (OMPL) + ComputeIK (kinematics) all read these params off the node, so it needs
     # the same full MoveIt config move_group gets (URDF, SRDF, kinematics, planning

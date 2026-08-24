@@ -1,7 +1,7 @@
 <root BTCPP_format="4" main_tree_to_execute="SortingCycle">
   <BehaviorTree ID="SortingCycle">
     <Sequence name="one_sorting_cycle">
-      <Repeat num_cycles="{cycle_object_count}">
+      <Repeat num_cycles="{object_count}">
         <Sequence name="reobserve_and_sort_one_object">
           <RemainingCount expected_count="{expected_count}"/>
           <DetectObjects expected_count="{expected_count}" objects="{objects}"/>

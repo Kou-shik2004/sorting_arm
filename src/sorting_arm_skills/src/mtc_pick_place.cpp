@@ -6,9 +6,11 @@
 #include <vector>
 
 #include "geometry_msgs/msg/vector3_stamped.hpp"
+#include "moveit/collision_detection/collision_common.hpp"
 #include "moveit/planning_scene/planning_scene.hpp"
 #include "moveit/robot_model/robot_model.hpp"
 #include "moveit/robot_state/robot_state.hpp"
+#include "moveit/robot_trajectory/robot_trajectory.hpp"
 #include "moveit/task_constructor/solvers.h"
 #include "moveit/task_constructor/stages.h"
 #include "moveit/task_constructor/task.h"
@@ -129,6 +131,50 @@ std::unique_ptr<mtc::stages::ModifyPlanningScene> make_normalize_mimics() {
     state.update();
   });
   return mimics;
+}
+
+std::string first_collision_detail(const mtc::Task& task) {
+  std::string detail;
+  collision_detection::CollisionRequest request;
+  request.contacts = true;
+  request.max_contacts = 1;
+  request.max_contacts_per_pair = 1;
+
+  task.stages()->traverseRecursively([&](const mtc::Stage& stage, unsigned int) {
+    for (const auto& failure : stage.failures()) {
+      const auto* subtrajectory = dynamic_cast<const mtc::SubTrajectory*>(failure.get());
+      if (subtrajectory == nullptr || subtrajectory->trajectory() == nullptr) {
+        continue;
+      }
+
+      request.group_name = subtrajectory->trajectory()->getGroupName();
+      const auto collision_at_state = [&](const mtc::InterfaceState* state) {
+        if (state == nullptr) {
+          return false;
+        }
+
+        collision_detection::CollisionResult result;
+        state->scene()->checkCollision(request, result);
+        if (result.contacts.empty()) {
+          return false;
+        }
+
+        const auto& contact = result.contacts.begin()->second.front();
+        std::ostringstream message;
+        message << "stage=" << stage.name() << " collision=" << contact.body_name_1 << " - " << contact.body_name_2
+                << " depth=" << contact.depth << " m";
+        detail = message.str();
+        return true;
+      };
+
+      if (collision_at_state(failure->start()) || collision_at_state(failure->end())) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  return detail;
 }
 
 }  // namespace
@@ -328,6 +374,10 @@ SkillResult MtcPickPlace::run_task(const std::shared_ptr<mtc::Task>& task, const
   if (!plan_result) {
     std::ostringstream reason;
     task->explainFailure(reason);
+    const std::string collision_detail = first_collision_detail(*task);
+    if (!collision_detail.empty()) {
+      reason << '\n' << collision_detail;
+    }
     return skill_error(phase, "MTC found no solution: " + reason.str(), plan_result.val);
   }
 

@@ -2,12 +2,13 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
+#include <exception>
 #include <future>
 #include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <utility>
 
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include "sorting_arm_executive/bt_nodes.hpp"
@@ -36,9 +37,16 @@ sorting_arm_interfaces::msg::SkillResult startup_failure(const std::string& mess
 }  // namespace
 
 ExecutiveNode::ExecutiveNode(const rclcpp::NodeOptions& options) : Node("sorting_arm_executive", options) {
-  config_ = load_executive_config(*this);
-  planner_.emplace(config_.destination_slots);
-  report_->total_jobs = config_.cycle_object_count;
+  const auto object_count = declare_parameter<std::int64_t>("object_count");
+  if (object_count < 2 || static_cast<std::size_t>(object_count) > kTrayCapacity) {
+    throw std::runtime_error("object_count must be between 2 and the tray capacity (" + std::to_string(kTrayCapacity) + ")");
+  }
+  object_count_ = static_cast<std::size_t>(object_count);
+  readiness_timeout_s_ = declare_parameter<double>("readiness_timeout_s");
+  detect_timeout_s_ = declare_parameter<double>("detect_timeout_s");
+  sync_timeout_s_ = declare_parameter<double>("sync_timeout_s");
+  cancel_timeout_s_ = declare_parameter<double>("cancel_timeout_s");
+  report_->total_jobs = object_count_;
 
   detect_client_ = create_client<sorting_arm_interfaces::srv::DetectObjects>("detect_objects");
   sync_client_ = create_client<sorting_arm_interfaces::srv::SyncObjects>("sync_objects");
@@ -46,29 +54,25 @@ ExecutiveNode::ExecutiveNode(const rclcpp::NodeOptions& options) : Node("sorting
 }
 
 void ExecutiveNode::initialize() {
-  const auto cycle_state = std::make_shared<AdaptiveCycleState>(config_.cycle_object_count);
-  register_policy_nodes(factory_, *planner_, cycle_state, report_);
-  factory_.registerNodeType<DetectObjectsNode>("DetectObjects", detect_client_, config_.detect_timeout_s, report_,
-                                               get_clock());
-  factory_.registerNodeType<SyncObjectsNode>("SyncObjects", sync_client_, config_.sync_timeout_s, report_, get_clock());
+  const auto cycle_state = std::make_shared<AdaptiveCycleState>(object_count_);
+  register_policy_nodes(factory_, cycle_state, report_);
 
-  const auto server_timeout =
-      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(config_.cancel_timeout_s));
-  auto make_params = [this, server_timeout](const std::string& action_name) {
+  auto make_params = [this](const std::string& name, double timeout_s) {
     BT::RosNodeParams params;
     params.nh = shared_from_this();
-    params.default_port_value = action_name;
-    params.server_timeout = server_timeout;
+    params.default_port_value = name;
+    params.server_timeout = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(timeout_s));
     return params;
   };
-  factory_.registerNodeType<HomeNode>("Home", make_params("home"), report_);
-  factory_.registerNodeType<SortNode>("Sort", make_params("sort"), report_);
+  factory_.registerNodeType<DetectObjectsNode>("DetectObjects", make_params("detect_objects", detect_timeout_s_), report_);
+  factory_.registerNodeType<SyncObjectsNode>("SyncObjects", make_params("sync_objects", sync_timeout_s_), report_);
+  factory_.registerNodeType<HomeNode>("Home", make_params("home", cancel_timeout_s_), report_);
+  factory_.registerNodeType<SortNode>("Sort", make_params("sort", cancel_timeout_s_), report_);
 
   // build the tree only after readiness (see check_readiness) - each RosActionNode probes its
   // server in its constructor, so building here would log "not reachable" before the servers are up
-  tree_path_ =
-      ament_index_cpp::get_package_share_directory("sorting_arm_executive") + "/behavior_trees/sorting_cycle.xml";
-  readiness_deadline_ = deadline_after(config_.readiness_timeout_s);
+  tree_path_ = ament_index_cpp::get_package_share_directory("sorting_arm_executive") + "/behavior_trees/sorting_cycle.xml";
+  readiness_deadline_ = deadline_after(readiness_timeout_s_);
   timer_ = create_wall_timer(20ms, [this] { tick(); });
   RCLCPP_INFO(get_logger(), "executive loaded; waiting for controllers and application endpoints");
 }
@@ -104,7 +108,7 @@ void ExecutiveNode::check_readiness() {
   if (!controllers_ready_ && controller_request_ && controller_request_->future.wait_for(0s) == std::future_status::ready) {
     const auto response = controller_request_->future.get();
     controller_request_.reset();
-    controllers_ready_ = response != nullptr && controller_response_is_ready(*response);
+    controllers_ready_ = controller_response_is_ready(*response);
   }
 
   if (!controllers_ready_ && !controller_request_ && controller_client_->service_is_ready() &&
@@ -119,7 +123,7 @@ void ExecutiveNode::check_readiness() {
   const bool endpoints_ready = detect_client_->service_is_ready() && sync_client_->service_is_ready();
   if (controllers_ready_ && endpoints_ready) {
     auto blackboard = BT::Blackboard::create();
-    blackboard->set("cycle_object_count", static_cast<int>(config_.cycle_object_count));
+    blackboard->set("object_count", static_cast<int>(object_count_));
     try {
       tree_ = factory_.createTreeFromFile(tree_path_, blackboard);
     } catch (const std::exception& error) {
@@ -184,14 +188,26 @@ void ExecutiveNode::log_terminal(BT::NodeStatus status) {
                 report_->completed_jobs, report_->total_jobs);
     return;
   }
-  if (report_->has_failure) {
-    RCLCPP_ERROR(get_logger(),
-                 "sorting cycle failed: completed=%zu total=%zu operation=%s object=%s phase=%s native_code=%d message=%s",
-                 report_->completed_jobs, report_->total_jobs, report_->operation.c_str(), report_->object_id.c_str(),
-                 report_->failure.phase.c_str(), report_->failure.native_code, report_->failure.message.c_str());
-    return;
-  }
-  RCLCPP_ERROR(get_logger(), "sorting cycle failed without a recorded child result");
+  // every failing leaf records into report_, so has_failure holds on any tree FAILURE
+  RCLCPP_ERROR(get_logger(),
+               "sorting cycle failed: completed=%zu total=%zu operation=%s object=%s phase=%s native_code=%d message=%s",
+               report_->completed_jobs, report_->total_jobs, report_->operation.c_str(), report_->object_id.c_str(),
+               report_->failure.phase.c_str(), report_->failure.native_code, report_->failure.message.c_str());
 }
 
 }  // namespace sorting_arm_executive
+
+int main(int argc, char* argv[]) {
+  rclcpp::init(argc, argv);
+  try {
+    auto node = std::make_shared<sorting_arm_executive::ExecutiveNode>();
+    node->initialize();
+    rclcpp::spin(node);
+  } catch (const std::exception& error) {
+    RCLCPP_FATAL(rclcpp::get_logger("sorting_arm_executive"), "startup failed: %s", error.what());
+    rclcpp::shutdown();
+    return 1;
+  }
+  rclcpp::shutdown();
+  return 0;
+}

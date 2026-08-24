@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    use_sim_time: true
+
+    # tunables only - object_count is an app.launch argument, not tuned here
+    readiness_timeout_s: 120.0
+    detect_timeout_s: 2.0
+    sync_timeout_s: 10.0
+    cancel_timeout_s: 5.0
